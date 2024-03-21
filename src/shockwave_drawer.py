@@ -2,7 +2,15 @@
 from augmenters.traffic_light import TrafficLight
 from sortedcontainers import SortedList
 
-from .diagram_utils import Event, EventType, Interface, State, dtPoint
+from .diagram_utils import (
+    CapacityEvent,
+    Event,
+    EventType,
+    Interface,
+    IntersectionEvent,
+    State,
+    dtPoint,
+)
 from .fundamental_diagram import FundamentalDiagram
 
 # from .state_handler import StateHandler
@@ -29,7 +37,21 @@ class ShockwaveDrawer:
         for augment in augments:
             augment.init(self.simulation_time, self.events, self.interfaces, self.diagram)
 
-    def resolve_state(self, point: dtPoint, below: bool = True) -> State:
+    def _add_interface(self, interface: Interface):
+        # TODO: handle 2+ interface intersections (if they exist)
+        for x in self.interfaces:
+            assert x != interface
+
+            intersect = interface.intersection(x)
+
+            if intersect is None:
+                continue
+            else:
+                self.events.add(IntersectionEvent(intersect, [x, interface]))
+
+        self.interfaces.append(interface)
+
+    def _resolve_state(self, point: dtPoint, below: bool = True) -> State:
         # idea: on the dt-plane, you can get the interface that pertains to an event by looking
         # directly down from theevent point (in the distance dimension) and taking the
         # above state of the closest interface
@@ -50,14 +72,52 @@ class ShockwaveDrawer:
 
         return res or self.default_state
 
+    def _handle_capacity_event(self, cur: CapacityEvent, above: State, below: State) -> None:
+        # flow can spontaneously go down
+        # TODO: determine if we need an inflow in a capacity event --
+        # is not really determined by the event but by prior conditions
+        inflow = below.flow if cur.inflow == -1 else cur.inflow  # noqa: F841
+
+        outflow = self.diagram.get_max_state().flow if cur.outflow == -1 else cur.outflow
+        # TODO: adjust the outflow for the maximum permissible flow
+        outflow = min(
+            outflow, float("inf")
+        )  # possibly above.flow with consideration for default state?
+
+        # the stuff below it (going into the event)
+        event_below_state = self.diagram.get_state_by_flow(outflow, below)
+        in_interface = Interface(
+            cur.point,
+            self.diagram.get_interface_slope(event_below_state, above),
+            event_below_state,
+            below,
+            bounds=(cur.point, None),
+        )
+
+        # the stuff above it (going out of the event)
+        # empty state is kinda a byproduct of everything --
+        # not a pure result of capacity changes
+        event_above_state = self.diagram.get_state_by_flow(outflow, below, flip=True)
+        out_interface = Interface(cur.point, 0, above, event_above_state, bounds=(cur.point, None))
+
+        self._add_interface(in_interface)
+        self._add_interface(out_interface)
+
+    def _handle_intersection_event(
+        self, cur: IntersectionEvent, above: State, below: State
+    ) -> None:
+        pass
+
     def run(self):
         while self.events:
             cur: Event = self.events.pop(0)
-            above = self.resolve_state(cur.point, below=False)
-            below = self.resolve_state(cur.point, below=True)
+            above = self._resolve_state(cur.point, below=False)
+            below = self._resolve_state(cur.point, below=True)
 
-            if cur.type == EventType.user:
-                assert (
-                    len(cur.interfaces) == 1
-                )  # if we assume augmenters always have an interface, this must be true
-                interface = cur.interfaces[0]
+            match cur.type:
+                case EventType.capacity:
+                    self._handle_capacity_event(cur, above, below)
+                    break
+                case EventType.intersection:
+                    self._handle_intersection_event(cur, above, below)
+                    break

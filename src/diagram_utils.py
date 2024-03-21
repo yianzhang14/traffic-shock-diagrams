@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from abc import ABC
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import total_ordering
@@ -33,20 +34,19 @@ class dtPoint:
 
 
 class EventType(Enum):
-    user: 1
-    generated: 2
+    intersection: 1
+    capacity: 2
 
 
 @dataclass
 @total_ordering
-class Event:
+class Event(ABC):
     # a (hardcoded) event is a change in capacity; need to know incoming and outcoming (step up or a step down)
     # idea: abstract events even more to be literal changes in capacity (for hardcoded); a traffic light would have two
     # for the generated ones, they are intersections between interfaces -- cut things off and will generate a new one
     # if there wasn't a new one, then there would not be an intersection
     point: dtPoint
     type: EventType
-    interfaces: Optional[list[Interface]] = []  # can you have more than 2 intersecting?
 
     def __eq__(self, other: Event) -> bool:
         return self.point == other.point
@@ -55,6 +55,38 @@ class Event:
         return (self.point.time < other.point.time) or (
             self.point.position < other.point.position
         )  # tiebreaker
+
+
+@dataclass
+class IntersectionEvent(Event):
+    interfaces: list[Interface]
+
+    def __init__(self, point: dtPoint, interfaces: list[Interface]):
+        super().__init__(point, EventType.intersection)
+
+        self.interfaces = interfaces
+
+
+@dataclass
+class CapacityEvent(Event):
+    inflow: float
+    outflow: float
+    interface: Interface
+
+    def __init__(
+        self, point: dtPoint, interface: Interface, inflow: float = -1, outflow: float = -1
+    ):
+        super().__init__(point, EventType.capacity)
+
+        self.interface = interface
+
+        # by default, we will make in_cap == -1 mean any capacity
+        # out_cap == -1 will mean the max possible capacity after the event
+        assert inflow == -1 or inflow >= 0
+        assert outflow == -1 or outflow >= 0
+
+        self.inflow = inflow
+        self.outflow = outflow
 
 
 @dataclass
@@ -67,7 +99,7 @@ class State:
     def get_speed(self) -> float:
         return self.flow / self.density
 
-    def get_interface_speed(self, other: State) -> float:
+    def get_interface_slope(self, other: State) -> float:
         return (self.flow - other.flow) / (self.density - other.density)
 
 
@@ -76,9 +108,9 @@ class Interface:  # boundary between two states
         self,
         point: dtPoint,
         slope: float,
-        above: State = None,
-        below: State = None,
-        bounds: tuple[dtPoint, dtPoint] = [],
+        above: State,
+        below: State,
+        bounds: tuple[Optional[dtPoint], Optional[dtPoint]] = (None, None),
     ):
         self.point = point
         self.slope = slope
@@ -87,7 +119,36 @@ class Interface:  # boundary between two states
         self.below = below
 
         # self.bounds: list[tuple[dtPoint, dtPoint]] = bounds  # limit 2, number of endpoints
-        self.endpoints: list[dtPoint] = [None, None]  # lower, upper (with respect to time)
+        self.endpoints: list[dtPoint] = [
+            bounds[0],
+            bounds[1],
+        ]  # lower, upper (with respect to time)
+
+    def intersection(self, other: Interface) -> Optional[dtPoint]:
+        if math.isclose(self.slope, other.slope):
+            return False
+
+        # this is the formula for the intersection point (x)
+        # of two lines in point-slope form
+        time_of_intersection = (
+            other.slope * other.point.time
+            - self.slope * self.point.time
+            + other.point.position
+            - other.point.position
+        ) / (self.slope - other.slope)
+
+        # they intersect if there is a valid position at both times
+        # for both interface definitions
+        pos1 = self.get_pos_at_time(time_of_intersection)
+        pos2 = other.get_pos_at_time(time_of_intersection)
+
+        if not pos1 or not pos2:
+            return None
+
+        # this should be true by definition of intersection
+        assert math.isclose(pos1, pos2)
+
+        return dtPoint(time_of_intersection, pos1)
 
     def get_pos_at_time(self, time: float) -> Optional[float]:
         if (self.endpoints[1] and self.endpoints[1].time < time) or (
