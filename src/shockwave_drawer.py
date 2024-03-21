@@ -76,6 +76,7 @@ class ShockwaveDrawer:
         # flow can spontaneously go down
         # TODO: determine if we need an inflow in a capacity event --
         # is not really determined by the event but by prior conditions
+        # it is encapsulated by the below state essentially
         inflow = below.flow if cur.inflow == -1 else cur.inflow  # noqa: F841
 
         outflow = self.diagram.get_max_state().flow if cur.outflow == -1 else cur.outflow
@@ -84,29 +85,82 @@ class ShockwaveDrawer:
             outflow, float("inf")
         )  # possibly above.flow with consideration for default state?
 
-        # the stuff below it (going into the event)
-        event_below_state = self.diagram.get_state_by_flow(outflow, below)
-        in_interface = Interface(
-            cur.point,
-            self.diagram.get_interface_slope(event_below_state, above),
-            event_below_state,
-            below,
-            bounds=(cur.point, None),
-        )
+        # TODO: make this orientation-independent (instead of below_*, make names more meaningful)
+        # TODO: do we actually need this conditional? it is currently just the same
+        # need conditional here to preserve the above/below orientation of interfaces
+        # essentially when flow goes up, cars must group
+        # downwards and vice versa for the conservation of cars
+        if outflow < cur.outflow:
+            # the stuff below it (going into the event)
+            event_below_state = self.diagram.get_state_by_flow(outflow, below)
+            below_interface = Interface(
+                cur.point,
+                self.diagram.get_interface_slope(event_below_state, below),
+                event_below_state,
+                below,
+                bounds=(cur.point, None),
+            )
 
-        # the stuff above it (going out of the event)
-        # empty state is kinda a byproduct of everything --
-        # not a pure result of capacity changes
-        event_above_state = self.diagram.get_state_by_flow(outflow, below, flip=True)
-        out_interface = Interface(cur.point, 0, above, event_above_state, bounds=(cur.point, None))
+            # the stuff above it (going out of the event)
+            # empty state is kinda a byproduct of everything --
+            # not a pure result of capacity changes
+            event_above_state = self.diagram.get_state_by_flow(outflow, below, flip=True)
+            above_interface = Interface(
+                cur.point,
+                self.diagram.get_interface_slope(above, event_above_state),
+                above,
+                event_above_state,
+                bounds=(cur.point, None),
+            )
 
-        self._add_interface(in_interface)
-        self._add_interface(out_interface)
+        elif outflow > cur.outflow:
+            # the stuff below it (going into the event)
+            event_below_state = self.diagram.get_state_by_flow(outflow, below)
+            below_interface = Interface(
+                cur.point,
+                self.diagram.get_interface_slope(event_below_state, above),
+                event_below_state,
+                below,
+                bounds=(cur.point, None),
+            )
+
+            # the stuff above it (going out of the event)
+            # empty state is kinda a byproduct of everything --
+            # not a pure result of capacity changes
+            # TODO: currently, there is no ambiguity in getting state by flow for traffic lights
+            # will only go to maximal, which is the only point that maps to exactly one density
+            # may have to swap the flips
+            event_above_state = self.diagram.get_state_by_flow(outflow, below, flip=True)
+            above_interface = Interface(
+                cur.point,
+                self.diagram.get_interface_slope(above, event_above_state),
+                above,
+                event_above_state,
+                bounds=(cur.point, None),
+            )
+        else:  # math.isclose(outflow, cur.outflow)
+            raise RuntimeError("this capacity event doesn't change")
+
+        self._add_interface(below_interface)
+        self._add_interface(above_interface)
 
     def _handle_intersection_event(
         self, cur: IntersectionEvent, above: State, below: State
     ) -> None:
-        pass
+        # chop off the interface endpoints
+        # assumes that it will always be in the future -- i.e., upper bound
+        for interface in cur.interfaces:
+            interface.add_cutoff(None, cur.point)
+
+        new_interface = Interface(
+            cur.point,
+            self.diagram.get_interface_slope(above, below),
+            above,
+            below,
+            bounds=(cur.point, None),
+        )
+
+        self._add_interface(new_interface)
 
     def run(self):
         while self.events:

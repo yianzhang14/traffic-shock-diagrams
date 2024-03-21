@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from functools import total_ordering
 from itertools import count
-from typing import Optional
+from typing import Optional, overload
 
 import shapely as shp
 
@@ -41,10 +41,6 @@ class EventType(Enum):
 @dataclass
 @total_ordering
 class Event(ABC):
-    # a (hardcoded) event is a change in capacity; need to know incoming and outcoming (step up or a step down)
-    # idea: abstract events even more to be literal changes in capacity (for hardcoded); a traffic light would have two
-    # for the generated ones, they are intersections between interfaces -- cut things off and will generate a new one
-    # if there wasn't a new one, then there would not be an intersection
     point: dtPoint
     type: EventType
 
@@ -108,8 +104,8 @@ class Interface:  # boundary between two states
         self,
         point: dtPoint,
         slope: float,
-        above: State,
-        below: State,
+        above: State | None,
+        below: State | None,
         bounds: tuple[Optional[dtPoint], Optional[dtPoint]] = (None, None),
     ):
         self.point = point

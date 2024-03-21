@@ -45,6 +45,8 @@ class TrafficLight(TrafficAugmenter):
                 cur = Interface(
                     start,
                     0,
+                    None,
+                    None,
                     bounds=[start, end],
                     above=settings.get_empty_state(),
                     below=settings.get_jam_state(),
