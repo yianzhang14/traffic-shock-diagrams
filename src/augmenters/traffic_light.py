@@ -1,6 +1,6 @@
 from sortedcontainers import SortedList
 
-from ..diagram_utils import CapacityEvent, EventType, Interface, Interface, dtPoint
+from ..diagram_utils import CapacityEvent, Interface, dtPoint
 from ..fundamental_diagram import FundamentalDiagram
 from .base_augmenter import TrafficAugmenter
 
@@ -28,13 +28,7 @@ class TrafficLight(TrafficAugmenter):
         self.id = TrafficLight.id
         TrafficLight.id += 1
 
-    def init(
-        self,
-        simulation_time: float,
-        events: SortedList,
-        interfaces: list[Interface],
-        settings: FundamentalDiagram,
-    ):
+    def init(self, simulation_time: float, events: SortedList, interfaces: list[Interface]):
         time = 0
 
         while time <= simulation_time:

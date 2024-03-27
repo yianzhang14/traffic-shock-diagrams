@@ -1,5 +1,5 @@
 # from augmenters.base_augmenter import TrafficAugmenter
-from sortedcontainers import SortedList, SortedDict
+from sortedcontainers import SortedList
 
 from .augmenters.traffic_light import TrafficLight
 from .diagram_utils import (
@@ -35,7 +35,7 @@ class ShockwaveDrawer:
         self.interfaces: list[Interface] = []
 
         for augment in augments:
-            augment.init(self.simulation_time, self.events, self.interfaces, self.diagram)
+            augment.init(self.simulation_time, self.events, self.interfaces)
 
     def _add_interface(self, interface: Interface):
         # TODO: handle 2+ interface intersections (if they exist)
@@ -138,6 +138,10 @@ class ShockwaveDrawer:
 
     def _handle_intersection_event(self, cur: IntersectionEvent) -> None:
         assert len(cur.interfaces) >= 2
+
+        for interface in cur.interfaces:
+            if interface.get_pos_at_time(cur.point.time) is None:
+                return
 
         # determine which state is above/below using interface slopes
         maxslope = float("-inf")
