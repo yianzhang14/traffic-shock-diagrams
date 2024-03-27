@@ -7,7 +7,7 @@ import numpy as np
 from scipy import interpolate
 
 from .custom_types import Axes, Figure
-from .diagram_utils import State
+from .drawer_utils import State
 
 
 class FundamentalDiagram:

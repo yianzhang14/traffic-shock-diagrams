@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 from sortedcontainers import SortedList
 
-from src.diagram_utils import Interface
+from src.drawer_utils import Interface
 
 
 # TODO: fully flesh this out

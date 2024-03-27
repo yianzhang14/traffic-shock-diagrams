@@ -2,7 +2,7 @@ from typing import override
 
 from sortedcontainers import SortedList
 
-from ..diagram_utils import CapacityEvent, Interface, dtPoint
+from ..drawer_utils import CapacityEvent, Interface, dtPoint
 from .base_augmenter import TrafficAugmenter
 
 

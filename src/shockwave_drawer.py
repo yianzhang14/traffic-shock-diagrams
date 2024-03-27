@@ -1,8 +1,12 @@
 # from augmenters.base_augmenter import TrafficAugmenter
+import matplotlib.pyplot as plt
 from sortedcontainers import SortedList
 
+from src.custom_types import Axes
+
 from .augmenters.traffic_light import TrafficLight
-from .diagram_utils import (
+from .fundamental_diagram import FundamentalDiagram
+from .drawer_utils import (
     CapacityEvent,
     Event,
     EventType,
@@ -10,8 +14,8 @@ from .diagram_utils import (
     IntersectionEvent,
     State,
     dtPoint,
+    float_lt,
 )
-from .fundamental_diagram import FundamentalDiagram
 
 # from .state_handler import StateHandler
 
@@ -77,6 +81,7 @@ class ShockwaveDrawer:
 
         # find the interface that intersects the closest from the given interface
         for x in self.interfaces:
+            print(x, interface)
             assert not x.equivalent_to(interface)  # basic sanity check -- should never happen
             intersect = interface.intersection(x)
 
@@ -254,6 +259,8 @@ class ShockwaveDrawer:
     def run(self):
         """Main function to generate the shockwave diagram given the inputs."""
 
+        self.figures = []
+
         # while there are more events to process
         while self.events:
             # get the first event (first event in time)
@@ -270,3 +277,25 @@ class ShockwaveDrawer:
                     self._handle_capacity_event(cur, above, below)
                 case EventType.intersection:
                     self._handle_intersection_event(cur)
+
+            self.update_figure()
+
+    def update_figure(self):
+        fig, ax = plt.subplots(figsize=(20, 10))
+        ax: Axes
+
+        for interface in self.interfaces:
+            p1 = interface.endpoints[0]
+            p2 = interface.endpoints[1]
+
+            if p1 is None:
+                p1 = dtPoint(0, interface.get_pos_at_time(0))
+            if p2 is None:
+                p2 = dtPoint(
+                    self.simulation_time + 5, interface.get_pos_at_time(self.simulation_time + 5)
+                )
+
+            if p1 != p2:
+                ax.plot((p1.time, p2.time), (p1.position, p2.position), marker="o")
+
+        self.figures.append((fig, ax))

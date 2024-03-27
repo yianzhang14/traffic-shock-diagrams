@@ -4,7 +4,7 @@ import shapely as shp
 from shapely.geometry import Polygon
 
 # from .diagram_utils import Event, EventType, Interface, State, dtPoint
-from .diagram_utils import State, dtPoint
+from .drawer_utils import State, dtPoint
 
 """
     shapely implementation of state resolution; currently deprecated
