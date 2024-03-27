@@ -173,7 +173,7 @@ class ShockwaveDrawer:
             main_interface_state = self.diagram.get_state_by_flow(posterior_capacity, below)
             main_interface = Interface(
                 cur.point,
-                self.diagram.get_interface_slope(main_interface_state, below),
+                self.diagram.get_interface_slope(main_interface_state.density, below.density),
                 main_interface_state,
                 below,
                 bounds=(cur.point, None),
@@ -186,7 +186,7 @@ class ShockwaveDrawer:
 
             byproduct_interface = Interface(
                 cur.point,
-                self.diagram.get_interface_slope(above, byproduct_interface_state),
+                self.diagram.get_interface_slope(above.density, byproduct_interface_state.density),
                 above,
                 byproduct_interface_state,
                 bounds=(cur.point, None),
@@ -243,7 +243,7 @@ class ShockwaveDrawer:
         # goes outwards from this current point to higher times
         new_interface = Interface(
             cur.point,
-            self.diagram.get_interface_slope(above, below),
+            self.diagram.get_interface_slope(above.density, below.density),
             above,
             below,
             bounds=(cur.point, None),

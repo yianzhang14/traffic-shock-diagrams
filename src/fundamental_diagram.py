@@ -11,9 +11,27 @@ from .diagram_utils import State
 
 
 class FundamentalDiagram:
+    """This class encapsulates a fundamental diagram. It basically serves as a setting file
+    with useful helper functions for setting up/running through the shockwave drawer scenario.
+    """
+
     def __init__(self, freeflow_speed: float, jam_density: float, traffic_wave_speed: float):
-        assert freeflow_speed > 0 and jam_density > 0 and traffic_wave_speed > 0
-        assert freeflow_speed > traffic_wave_speed
+        """Constructor of a fundamental diagram.
+
+        Args:
+            freeflow_speed (float): speed at which uncongested traffic goes (meters / second)
+            jam_density (float): maximum density cars can be at (cars / meter)
+            traffic_wave_speed (float): speed at which shockwaves travel (?) (meters / second)
+
+        Raises:
+            ValueError: All speeds must be positive
+            ValueError: Freeflow speed must be greater than traffic wave speed
+        """
+        if not (freeflow_speed > 0 and jam_density > 0 and traffic_wave_speed > 0):
+            raise ValueError("All speeds must be positive.")
+
+        if freeflow_speed <= traffic_wave_speed:
+            raise ValueError("Freeflow speed must be greater than traffic wave speed.")
 
         self.freeflow_speed = freeflow_speed
         self.jam_density = jam_density
@@ -33,6 +51,12 @@ class FundamentalDiagram:
         )
 
     def show(self) -> tuple[Figure, Axes]:
+        """Shows the fundamental diagram in matplotlib.
+
+        Returns:
+            tuple[Figure, Axes]: the generated figure
+        """
+
         fig, ax = plt.subplots()
         ax: Axes
 
@@ -47,33 +71,81 @@ class FundamentalDiagram:
         return (fig, ax)
 
     def get_state(self, density: float) -> State:
-        assert density >= 0 and density <= self.jam_density
+        """Gets the state at a given density.
+
+        Args:
+            density (float): the density query
+
+        Returns:
+            State: the state at which the density is as given
+        """
+        if not (density >= 0 and density <= self.jam_density):
+            raise ValueError("Density invalid -- not in the fundamental diagram")
 
         flow = self.func(density)
 
         return State(density, flow)
 
-    def get_interface_slope(self, x: float | State, y: float | State) -> float:
-        if isinstance(x, State) and isinstance(y, State):
-            return x.get_interface_slope(y)
-        elif isinstance(x, float) and isinstance(y, float):
-            state1 = self.get_state(x)
-            state2 = self.get_state(y)
+    def get_interface_slope(self, x: float, y: float) -> float:
+        """Gets the slope between the two states associated with the given densities.
 
-            return state1.get_interface_slope(state2)
+        Args:
+            x (float): a density
+            y (float): a density
 
-        raise RuntimeError("invalid arguments")
+        Returns:
+            float: the slope between the two states associated with the given densities
+        """
+
+        if math.isclose(x, y):
+            raise ValueError("The densities are equal -- slope not well-defined.")
+
+        state1 = self.get_state(x)
+        state2 = self.get_state(y)
+
+        return state1.get_interface_slope(state2)
 
     def get_jam_state(self) -> State:
+        """Returns the jam state (nothing moving and congested) of the fundamental diagram.
+
+        Returns:
+            State: the state corresponding to the jam state
+        """
         return State(self.jam_density, 0)
 
     def get_max_state(self) -> State:
+        """Returns the maximal state (max flow) of the fundamental diagram.
+
+        Returns:
+            State: the state corresponding to the maximal state
+        """
         return State(self.capacity_density, self.capacity)
 
     def get_empty_state(self) -> State:
+        """Returns the empty state (nothing moving and no cars) of the fundamental diagram.
+
+        Returns:
+            State: the state corresponding to the empty state
+        """
         return State(0, 0)
 
     def get_state_by_flow(self, flow: float, prev_state: State, flip: bool = False) -> State:
+        """Finds the states associated with a given flow and, by default, returns the valid one.
+        The valid state is defined as the one that would have a negative slope with the previous
+        state.
+
+        Can get the corresponding invalid state with flip=False.
+
+        Args:
+            flow (float): the flow query (cars / second)
+            prev_state (State): the previous state (used to determine validity)
+            flip (bool, optional): whether or not to return the invalid state. Defaults to False.
+
+        Returns:
+            State: the desired state associated with a given flow
+        """
+
+        # if we want the max flow, return the max state
         if math.isclose(flow, self.capacity):
             return self.get_max_state()
 
@@ -95,5 +167,19 @@ class FundamentalDiagram:
         return State(left_density, flow)
 
     def state_is_queued(self, state: State) -> bool:
-        assert state.density >= 0 and state.density <= self.jam_density
+        """Determines whether a state is queued--has density greater than the capacity density.
+
+        Args:
+            state (State): the query state
+
+        Raises:
+            ValueError: state density must be within bounds of the diagram
+
+        Returns:
+            bool: whether or not the state is queued
+        """
+
+        if not (state.density >= 0 and state.density <= self.jam_density):
+            raise ValueError("Density of the provided state is invalid")
+
         return state.density > self.capacity_density

@@ -10,6 +10,8 @@ from .diagram_utils import State, dtPoint
     shapely implementation of state resolution; currently deprecated
 """
 
+raise NotImplementedError("Deprecated in favor of direct state resolution.")
+
 
 class ShapedState:
     def __init__(self, state: State, polygon: Polygon):
