@@ -17,6 +17,10 @@ from .fundamental_diagram import FundamentalDiagram
 
 
 class ShockwaveDrawer:
+    """This encapsulates the main logic for creating a situation and determining
+    the shockwave diagram for the created situation.
+    """
+
     def __init__(
         self,
         diagram: FundamentalDiagram,
@@ -24,53 +28,97 @@ class ShockwaveDrawer:
         augments: list[TrafficLight],
         init_density: float,
     ):
+        """Constructor for a ShockwaveDrawer.
+
+        Args:
+            diagram (FundamentalDiagram): the fundamental diagram under consideration
+            simulation_time (float): how long to run the simulation for (seconds)
+            augments (list[TrafficLight]): the things generating CapacityEvents that generate
+            shockwaves
+            init_density (float): The default density that cars are in at time 0
+
+        Raises:
+            ValueError: The density must be within the bounds of the provided fundamental diagram.
+        """
         self.diagram = diagram
         self.simulation_time = simulation_time
 
+        # create the event queue -- want to process events in order of increasing time
         self.events: SortedList[Event] = SortedList()
 
-        assert init_density >= 0 and init_density <= self.diagram.jam_density
+        if not (init_density >= 0 and init_density <= self.diagram.jam_density):
+            raise ValueError(
+                "The provided initial density is not valid for the provided fundamental diagram."
+            )
 
         self.default_state = self.diagram.get_state(init_density)
         self.interfaces: list[Interface] = []
 
+        # initialize the augments -- add their events to the event queue
         for augment in augments:
             augment.init(self.simulation_time, self.events, self.interfaces)
 
     def _add_interface(self, interface: Interface):
-        # TODO: handle 2+ interface intersections (if they exist)
-        print("adding interface", interface, interface.endpoints, interface.above, interface.below)
+        """Private function to add an interface to the list of generated interfaces.
+        Handles basic sanity checking (no duplicate interfaces) and generates IntersectionEvents
+        as needed.
+
+        TODO: handle 2+ interface intersections (if they exist)
+        TODO: try kdTrees for faster intersection resolution
+
+        Args:
+            interface (Interface): the interface to add
+        """
 
         # only consider one intersection -- the one that is closest in time to it
         # breaks on vertical lines
         min_intersect: dtPoint | None = None
         min_interface: Interface = None
+
+        # find the interface that intersects the closest from the given interface
         for x in self.interfaces:
-            assert not x.equivalent_to(interface)
+            assert not x.equivalent_to(interface)  # basic sanity check -- should never happen
             intersect = interface.intersection(x)
 
+            # ignore overlaps and non-intersecting interfaces
             if intersect is None or interface.has_endpoint(intersect) or x.has_endpoint(intersect):
                 continue
             elif not min_intersect or intersect.time < min_intersect.time:
                 min_intersect = intersect
                 min_interface = x
 
+        # if we have an interesct, generate an IntersectionEvent between these two interfaces
         if min_intersect:
             event = IntersectionEvent(min_intersect, [interface, min_interface])
             self.events.add(event)
 
+        # add the interface to the list
         self.interfaces.append(interface)
 
     def _resolve_state(self, point: dtPoint, below: bool = True) -> State:
-        # idea: on the dt-plane, you can get the interface that pertains to an event by looking
-        # directly down from theevent point (in the distance dimension) and taking the
-        # above state of the closest interface
-        # same idea for getting the above state
+        """Private function to resolve the upstream and downstream state from a point.
+
+        Idea: on the dt-plane, you can get the interface that pertains to an event by looking
+        directly down from the event point (in the distance dimension) and taking the
+        above state of the closest interface. Same idea for getting the above state
+
+        TODO: make this more efficient by indexing interfaces by position
+
+        Args:
+            point (dtPoint): the point to resolve the state for
+            below (bool, optional): whether you want to below state or not. Defaults to True.
+
+        Returns:
+            State: The state below/above the point, default state if no state found.
+        """
+
         scale = 1 if below else -1
         res: State | None = None
         min_dist = float("inf")
 
+        # find the closest interface below/above the point and its relevant state
         for interface in self.interfaces:
+            # ignore overlapping interfaces
             if interface.has_endpoint(point):
                 continue
 
@@ -87,15 +135,30 @@ class ShockwaveDrawer:
 
                 min_dist = scale * (point.position - cur)
 
+        # return the found state or default state if none found
         return res or self.default_state
 
     def _handle_capacity_event(self, cur: CapacityEvent, above: State, below: State) -> None:
+        """Private function for handling a capacity event. Determines what to do
+        using the prior/posterior capacity (adjusted for the current state)
+        and the fundamental diagram.
+
+        TODO: determine whether we need to store latent capacity information (see the `pass` below)
+        TODO: set the event interface above/below states at the end (don't really need to)
+
+        Args:
+            cur (CapacityEvent): The capacity event to handle
+            above (State): the state above the point of the capacity event
+            below (State): the state below the point of the capacity event
+        """
+        # get prior/posterior capacity
         prior_capacity = below.flow if cur.prior_capacity == -1 else cur.prior_capacity
         posterior_capacity = (
             self.diagram.get_max_state().flow
             if cur.posterior_capacity == -1
             else cur.posterior_capacity
         )
+
         # we are limited by the flow of the incoming state IF the state is queued
         if not self.diagram.state_is_queued(below):
             posterior_capacity = min(posterior_capacity, below.flow)
@@ -103,7 +166,6 @@ class ShockwaveDrawer:
         # if we have an increase in capacity and there is not enough density (queuing)
         # to take advantage of that increase, do nothing -- no interface created
         if posterior_capacity >= prior_capacity and not self.diagram.state_is_queued(below):
-            # TODO: do we need to store latent capactiy information?
             pass
         # we have an actual event with a decrease in capacity
         else:
@@ -122,7 +184,6 @@ class ShockwaveDrawer:
                 posterior_capacity, below, flip=True
             )
 
-            print(above, byproduct_interface_state, below, main_interface_state, posterior_capacity)
             byproduct_interface = Interface(
                 cur.point,
                 self.diagram.get_interface_slope(above, byproduct_interface_state),
@@ -134,11 +195,22 @@ class ShockwaveDrawer:
             self._add_interface(main_interface)
             self._add_interface(byproduct_interface)
 
-        # TODO: set the user interface above/below states
-
     def _handle_intersection_event(self, cur: IntersectionEvent) -> None:
+        """Handles an intersection event. Determines behavior purely using
+        the intersecting interfaces in question and basic dt-diagram
+        resolutions.
+
+        TODO: is an event valid if it just cuts off one of the interfaces? Currently
+        only valid if it cuts off all the interfaces in question.
+        TODO: handle the assertion that the above/below states are not None for CapEvent interfaces
+
+        Args:
+            cur (IntersectionEvent): the IntersectionEvent to process
+        """
         assert len(cur.interfaces) >= 2
 
+        # determine if this event is still valid -- i.e., it would actually
+        # cutoff the interfaces
         for interface in cur.interfaces:
             if interface.get_pos_at_time(cur.point.time) is None:
                 return
@@ -158,12 +230,17 @@ class ShockwaveDrawer:
                 minslope = interface.slope
                 above = interface.above
 
-            # chop off the interface endpoints
+            # chop off the interface endpoints while iterating
             # assumes that it will always be in the future -- i.e., upper bound
             interface.add_cutoff(None, cur.point)
 
+        # this basically checks that above/below are not None -- may break on
+        # intersection with user-inputted interfaces since
+        # we currently don't fill in any CapacityEvent interfaces
         assert above is not None and below is not None
 
+        # creat the new interface using the found above/below states
+        # goes outwards from this current point to higher times
         new_interface = Interface(
             cur.point,
             self.diagram.get_interface_slope(above, below),
@@ -175,12 +252,19 @@ class ShockwaveDrawer:
         self._add_interface(new_interface)
 
     def run(self):
+        """Main function to generate the shockwave diagram given the inputs."""
+
+        # while there are more events to process
         while self.events:
+            # get the first event (first event in time)
             cur: Event = self.events.pop(0)
             print(f"processing {cur}")
+
+            # get the above/below states of the current event point
             above = self._resolve_state(cur.point, below=False)
             below = self._resolve_state(cur.point, below=True)
 
+            # handle the vent based on its type
             match cur.type:
                 case EventType.capacity:
                     self._handle_capacity_event(cur, above, below)
