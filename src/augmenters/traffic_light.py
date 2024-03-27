@@ -1,3 +1,5 @@
+from typing import override
+
 from sortedcontainers import SortedList
 
 from ..diagram_utils import CapacityEvent, Interface, dtPoint
@@ -48,6 +50,7 @@ class TrafficLight(TrafficAugmenter):
         self.id = TrafficLight.id
         TrafficLight.id += 1
 
+    @override
     def init(self, simulation_time: float, events: SortedList, interfaces: list[Interface]):
         time = 0
 
