@@ -5,7 +5,6 @@ from sortedcontainers import SortedList
 from src.custom_types import Axes
 
 from .augmenters.traffic_light import TrafficLight
-from .fundamental_diagram import FundamentalDiagram
 from .drawer_utils import (
     CapacityEvent,
     Event,
@@ -14,8 +13,8 @@ from .drawer_utils import (
     IntersectionEvent,
     State,
     dtPoint,
-    float_lt,
 )
+from .fundamental_diagram import FundamentalDiagram
 
 # from .state_handler import StateHandler
 
@@ -299,3 +298,4 @@ class ShockwaveDrawer:
                 ax.plot((p1.time, p2.time), (p1.position, p2.position), marker="o")
 
         self.figures.append((fig, ax))
+        plt.close(fig)

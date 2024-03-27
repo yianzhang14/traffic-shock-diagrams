@@ -373,11 +373,28 @@ class Interface:  # boundary between two states
         Returns:
             bool: whether or not the interfaces are functionally equivalent
         """
+        # if the two interfaces are disjoint in terms of endpoints, they are not equivalent
+        if (
+            other.endpoints[1]
+            and self.endpoints[0]
+            and other.endpoints[1].time < self.endpoints[0].time
+        ) or (
+            self.endpoints[1]
+            and other.endpoints[0]
+            and self.endpoints[1].time < other.endpoints[0].time
+        ):
+            return False
+
+        # if they share a point, they are equivalent if they share a slope
         if other.point == self.point:
             return math.isclose(other.slope, self.slope)
 
+        # if they share a time (do this since getting slope is undefined), they are equivalent
+        # if they share a position and a slope
         if math.isclose(other.point.time, self.point.time):
-            return math.isclose(other.point.position, self.point.position)
+            return math.isclose(other.point.position, self.point.position) and math.isclose(
+                self.slope, other.slope
+            )
 
         return math.isclose(self.point.get_slope(other.point), other.slope) and math.isclose(
             other.slope, self.slope
