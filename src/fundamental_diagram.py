@@ -53,17 +53,16 @@ class FundamentalDiagram:
 
         return State(density, flow)
 
-    def get_interface_slope(self, d1: float | State, d2: float | State) -> float:
-        if isinstance(d1, State):
-            d1 = d1.density
+    def get_interface_slope(self, x: float | State, y: float | State) -> float:
+        if isinstance(x, State) and isinstance(y, State):
+            return x.get_interface_slope(y)
+        elif isinstance(x, float) and isinstance(y, float):
+            state1 = self.get_state(x)
+            state2 = self.get_state(y)
 
-        if isinstance(d2, State):
-            d2 = d2.density
+            return state1.get_interface_slope(state2)
 
-        state1 = self.get_state(d1)
-        state2 = self.get_state(d2)
-
-        return state1.get_interface_slope(state2)
+        raise RuntimeError("invalid arguments")
 
     def get_jam_state(self) -> State:
         return State(self.jam_density, 0)
@@ -79,15 +78,22 @@ class FundamentalDiagram:
             return self.get_max_state()
 
         left_density = flow / self.freeflow_speed
-        right_density = self.capacity_density + (self.capacity - flow) / self.freeflow_speed
+        # this is solving a linear equation -- specifically for the
+        # right side of the fundamental diagram line
+        right_density = (
+            flow - self.capacity - self.trafficwave_speed * self.capacity_density
+        ) / -self.trafficwave_speed
 
         # assumption: between two organic states, it is impossible for
         # the differential in flow/density to be in the same direction
-        if (
-            not flip
-            and (flow > prev_state.flow and left_density > prev_state.density)
+        if not flip and (
+            (flow > prev_state.flow and left_density > prev_state.density)
             or (flow < prev_state.flow and left_density < prev_state.density)
         ):
-            return State(flow, right_density)
+            return State(right_density, flow)
 
-        return State(flow, left_density)
+        return State(left_density, flow)
+
+    def state_is_queued(self, state: State) -> bool:
+        assert state.density >= 0 and state.density <= self.jam_density
+        return state.density > self.capacity_density

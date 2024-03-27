@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from functools import total_ordering
 from itertools import count
-from typing import Optional, overload
+from typing import Optional
 
 import shapely as shp
 
@@ -34,8 +34,8 @@ class dtPoint:
 
 
 class EventType(Enum):
-    intersection: 1
-    capacity: 2
+    intersection = 1
+    capacity = 2
 
 
 @dataclass
@@ -56,21 +56,27 @@ class Event(ABC):
 @dataclass
 class IntersectionEvent(Event):
     interfaces: list[Interface]
+    disabled: bool
 
-    def __init__(self, point: dtPoint, interfaces: list[Interface]):
+    def __init__(self, point: dtPoint, interfaces: list[Interface], disabled: bool = False):
         super().__init__(point, EventType.intersection)
 
-        self.interfaces = interfaces
+        self.interfaces = interfaces  # always make the acting interface the first one
+        self.disabled = disabled
 
 
 @dataclass
 class CapacityEvent(Event):
-    inflow: float
-    outflow: float
+    prior_capacity: float
+    posterior_capacity: float
     interface: Interface
 
     def __init__(
-        self, point: dtPoint, interface: Interface, inflow: float = -1, outflow: float = -1
+        self,
+        point: dtPoint,
+        interface: Interface,
+        prior_capacity: float = -1,
+        posterior_capacity: float = -1,
     ):
         super().__init__(point, EventType.capacity)
 
@@ -78,11 +84,11 @@ class CapacityEvent(Event):
 
         # by default, we will make in_cap == -1 mean any capacity
         # out_cap == -1 will mean the max possible capacity after the event
-        assert inflow == -1 or inflow >= 0
-        assert outflow == -1 or outflow >= 0
+        assert prior_capacity == -1 or prior_capacity >= 0
+        assert posterior_capacity == -1 or posterior_capacity >= 0
 
-        self.inflow = inflow
-        self.outflow = outflow
+        self.prior_capacity = prior_capacity
+        self.posterior_capacity = posterior_capacity
 
 
 @dataclass
@@ -99,20 +105,18 @@ class State:
         return (self.flow - other.flow) / (self.density - other.density)
 
 
+@total_ordering
 class Interface:  # boundary between two states
     def __init__(
         self,
         point: dtPoint,
         slope: float,
-        above: State | None,
-        below: State | None,
+        above: Optional[State],
+        below: Optional[State],
         bounds: tuple[Optional[dtPoint], Optional[dtPoint]] = (None, None),
     ):
         self.point = point
         self.slope = slope
-
-        self.above = above
-        self.below = below
 
         # self.bounds: list[tuple[dtPoint, dtPoint]] = bounds  # limit 2, number of endpoints
         self.endpoints: list[dtPoint] = [
@@ -120,17 +124,30 @@ class Interface:  # boundary between two states
             bounds[1],
         ]  # lower, upper (with respect to time)
 
+        self.above = above
+        self.below = below
+
+    def __str__(self) -> str:
+        return f"Interface({self.point}, {self.slope})"
+
+    def has_endpoint(self, point: dtPoint) -> bool:
+        for endpoint in self.endpoints:
+            if endpoint and endpoint == point:
+                return True
+
+        return False
+
     def intersection(self, other: Interface) -> Optional[dtPoint]:
         if math.isclose(self.slope, other.slope):
-            return False
+            return None
 
         # this is the formula for the intersection point (x)
         # of two lines in point-slope form
         time_of_intersection = (
-            other.slope * other.point.time
-            - self.slope * self.point.time
-            + other.point.position
-            - other.point.position
+            other.point.position
+            - other.slope * other.point.time
+            - self.point.position
+            + self.slope * self.point.time
         ) / (self.slope - other.slope)
 
         # they intersect if there is a valid position at both times
@@ -156,8 +173,8 @@ class Interface:  # boundary between two states
 
     def add_cutoff(self, lower: Optional[dtPoint], upper: Optional[dtPoint]):
         # assert that this is a valid cutoff
-        assert math.isclose(self.slope, self.point.get_slope(lower))  # along same line
-        assert math.isclose(self.slope, self.point.get_slope(upper))  # along same line
+        assert not lower or math.isclose(self.slope, self.point.get_slope(lower))  # along same line
+        assert not upper or math.isclose(self.slope, self.point.get_slope(upper))  # along same line
         assert not (lower is None and upper is None)  # don't accept redundant cutoffs
         assert (
             lower is None or upper is None or (lower.time < upper.time)
@@ -182,8 +199,19 @@ class Interface:  # boundary between two states
             elif self.endpoints[1].time > upper.time:
                 self.endpoints[1] = upper
 
-    def __eq__(self, other: Interface) -> bool:
+    def equivalent_to(self, other: Interface) -> bool:
         if other.point == self.point:
             return math.isclose(other.slope, self.slope)
 
-        return self.point.get_slope(other.point) == other.slope and other.slope == self.slope
+        if math.isclose(other.point.time, self.point.time):
+            return math.isclose(other.point.position, self.point.position)
+
+        return math.isclose(self.point.get_slope(other.point), other.slope) and math.isclose(
+            other.slope, self.slope
+        )
+
+    def __eq__(self, other: Interface) -> bool:
+        return self.point == other.point and self.slope == other.slope
+
+    def __lt__(self, other: Interface) -> bool:
+        return self.point < other.point and self.slope < other.slope

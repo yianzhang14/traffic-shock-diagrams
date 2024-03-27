@@ -1,6 +1,6 @@
 from sortedcontainers import SortedList
 
-from ..diagram_utils import CapacityEvent, EventType, Interface, dtPoint
+from ..diagram_utils import CapacityEvent, EventType, Interface, Interface, dtPoint
 from ..fundamental_diagram import FundamentalDiagram
 from .base_augmenter import TrafficAugmenter
 
@@ -42,19 +42,11 @@ class TrafficLight(TrafficAugmenter):
                 start = dtPoint(time, self.pos)
                 end = dtPoint(time + self.cycles[self.state], self.pos)
 
-                cur = Interface(
-                    start,
-                    0,
-                    None,
-                    None,
-                    bounds=[start, end],
-                    above=settings.get_empty_state(),
-                    below=settings.get_jam_state(),
-                )
+                cur = Interface(start, 0, None, None, bounds=[start, end])
                 interfaces.append(cur)
 
-                events.add(CapacityEvent(start, cur, outflow=0))
-                events.add(CapacityEvent(end, cur, inflow=0))
+                events.add(CapacityEvent(start, cur, posterior_capacity=0))
+                events.add(CapacityEvent(end, cur, prior_capacity=0))
 
             time += self.cycles[self.state]
             self.state = (self.state + 1) % len(self.cycles)
