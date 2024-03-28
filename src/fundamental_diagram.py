@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import math
-
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import interpolate
 
 from .custom_types import Axes, Figure
-from .drawer_utils import State
+from .drawer_utils import State, float_isclose
 
 
 class FundamentalDiagram:
@@ -97,7 +95,7 @@ class FundamentalDiagram:
             float: the slope between the two states associated with the given densities
         """
 
-        if math.isclose(x, y):
+        if float_isclose(x, y):
             raise ValueError("The densities are equal -- slope not well-defined.")
 
         state1 = self.get_state(x)
@@ -146,7 +144,7 @@ class FundamentalDiagram:
         """
 
         # if we want the max flow, return the max state
-        if math.isclose(flow, self.capacity):
+        if float_isclose(flow, self.capacity):
             return self.get_max_state()
 
         left_density = flow / self.freeflow_speed

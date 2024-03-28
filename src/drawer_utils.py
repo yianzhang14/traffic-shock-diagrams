@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+
 from abc import ABC
 from dataclasses import dataclass, field
 from enum import Enum
@@ -11,6 +12,12 @@ from typing import Optional
 import shapely as shp
 
 # from .fundamental_diagram import FundamentalDiagram
+
+ABS_TOL = 1e-4
+
+
+def float_isclose(x: float, y: float) -> bool:
+    return math.isclose(x, y, abs_tol=ABS_TOL)
 
 
 @dataclass
@@ -38,7 +45,7 @@ class dtPoint:
             bool: whether or not the points are equal
         """
         # two points are equal if their time and position are equal, up to floating point error
-        return math.isclose(self.time, other.time) and math.isclose(self.position, other.position)
+        return float_isclose(self.time, other.time) and float_isclose(self.position, other.position)
 
     def get_slope(self, other: dtPoint) -> float:
         """Get the slope between two dtPoints, assuming position is y and time is x.
@@ -50,7 +57,7 @@ class dtPoint:
         Returns:
             float: the slope between this point and the other
         """
-        if math.isclose(self.time, other.time):
+        if float_isclose(self.time, other.time):
             raise ValueError("The two points have an invalid slope, as they share a time")
 
         return (self.position - other.position) / (self.time - other.time)
@@ -116,7 +123,7 @@ class Event(ABC):
         if self == other:
             return False
 
-        if math.isclose(self.point.time, other.point.time):
+        if float_isclose(self.point.time, other.point.time):
             if self.priority == other.priority:
                 return self.point.position < other.point.position
 
@@ -226,7 +233,7 @@ class State:
         Returns:
             bool: whether or not they are equal
         """
-        return math.isclose(self.density, other.density) and math.isclose(self.flow, other.flow)
+        return float_isclose(self.density, other.density) and float_isclose(self.flow, other.flow)
 
 
 class Interface:  # boundary between two states
@@ -301,7 +308,7 @@ class Interface:  # boundary between two states
         Returns:
             Optional[dtPoint]: the point of intersection, if it exists (None if it doesn't)
         """
-        if math.isclose(self.slope, other.slope):
+        if float_isclose(self.slope, other.slope):
             return None
 
         # this is the formula for the intersection point (x)
@@ -322,7 +329,7 @@ class Interface:  # boundary between two states
             return None
 
         # this should be true by definition of intersection
-        assert math.isclose(pos1, pos2)
+        assert float_isclose(pos1, pos2)
 
         return dtPoint(time_of_intersection, pos1)
 
@@ -352,12 +359,12 @@ class Interface:  # boundary between two states
             upper (Optional[dtPoint]): the upper cutoff to add (w.r.t. time), if any
         """
         # error checking for for argument validity
-        if not (not lower or math.isclose(self.slope, self.point.get_slope(lower))):
+        if not (not lower or float_isclose(self.slope, self.point.get_slope(lower))):
             raise ValueError(
                 "The lower bound supplied is invalid--does not fall along the interface line."
             )
 
-        if not (not upper or math.isclose(self.slope, self.point.get_slope(upper))):
+        if not (not upper or float_isclose(self.slope, self.point.get_slope(upper))):
             raise ValueError(
                 "The upper bound supplied is invalid--does not fall along the interface line."
             )
@@ -414,15 +421,15 @@ class Interface:  # boundary between two states
 
         # if they share a point, they are equivalent if they share a slope
         if other.point == self.point:
-            return math.isclose(other.slope, self.slope)
+            return float_isclose(other.slope, self.slope)
 
         # if they share a time (do this since getting slope is undefined), they are equivalent
         # if they share a position and a slope
-        if math.isclose(other.point.time, self.point.time):
-            return math.isclose(other.point.position, self.point.position) and math.isclose(
+        if float_isclose(other.point.time, self.point.time):
+            return float_isclose(other.point.position, self.point.position) and float_isclose(
                 self.slope, other.slope
             )
 
-        return math.isclose(self.point.get_slope(other.point), other.slope) and math.isclose(
+        return float_isclose(self.point.get_slope(other.point), other.slope) and float_isclose(
             other.slope, self.slope
         )

@@ -1,6 +1,4 @@
 # from augmenters.base_augmenter import TrafficAugmenter
-import math
-
 import matplotlib.pyplot as plt
 from sortedcontainers import SortedList
 
@@ -15,6 +13,7 @@ from .drawer_utils import (
     IntersectionEvent,
     State,
     dtPoint,
+    float_isclose,
 )
 from .fundamental_diagram import FundamentalDiagram
 
@@ -133,7 +132,7 @@ class ShockwaveDrawer:
 
             cur = interface.get_pos_at_time(point.time)
 
-            if cur is None or math.isclose(point.position - cur, 0):
+            if cur is None or float_isclose(point.position - cur, 0):
                 continue
 
             if scale * (point.position - cur) >= 0 and scale * (point.position - cur) < min_dist:
@@ -260,6 +259,7 @@ class ShockwaveDrawer:
             try:
                 interface.add_cutoff(None, cur.point)
             except Exception as _:
+                print(interface, _)
                 no_new_interface = True
 
         if no_new_interface:
@@ -309,9 +309,9 @@ class ShockwaveDrawer:
                     # above/below resolution of the new interface
                     x: IntersectionEvent
                     for x in self.events:
-                        if math.isclose(x.point.time, cur.point.time):
+                        if float_isclose(x.point.time, cur.point.time):
                             if (
-                                x.point.position == cur.point.position
+                                float_isclose(x.point.position, cur.point.position)
                                 and type(x) == type(cur)
                                 and len(x.interfaces) > len(cur.interfaces)
                             ):
