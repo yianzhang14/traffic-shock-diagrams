@@ -85,7 +85,8 @@ class Event(ABC):
     type: EventType
 
     def __eq__(self, other: Event) -> bool:
-        """Overload of equality for events. Two events are equal if they have the same point.
+        """Overload of equality for events. Two events are equal if they have the same time.
+        Only defined for comparison/sorting convenience.
 
         Args:
             other (Event): the event to compare with
