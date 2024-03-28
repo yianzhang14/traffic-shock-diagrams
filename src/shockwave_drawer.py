@@ -68,7 +68,6 @@ class ShockwaveDrawer:
         Handles basic sanity checking (no duplicate interfaces) and generates IntersectionEvents
         as needed.
 
-        TODO: handle 2+ interface intersections (if they exist)
         TODO: try kdTrees for faster intersection resolution
 
         Args:
@@ -78,23 +77,28 @@ class ShockwaveDrawer:
         # only consider one intersection -- the one that is closest in time to it
         # breaks on vertical lines
         min_intersect: dtPoint | None = None
-        min_interface: Interface = None
+        min_interfaces: list[Interface] = []
 
         # find the interface that intersects the closest from the given interface
         for x in self.interfaces:
             assert not x.equivalent_to(interface)  # basic sanity check -- should never happen
+
             intersect = interface.intersection(x)
 
             # ignore overlaps and non-intersecting interfaces
             if intersect is None or interface.has_endpoint(intersect):
                 continue
+            elif min_intersect and min_intersect == intersect:
+                min_interfaces.append(x)
             elif not min_intersect or intersect.time < min_intersect.time:
                 min_intersect = intersect
-                min_interface = x
+                min_interfaces = [x]
+
+        min_interfaces.append(interface)
 
         # if we have an interesct, generate an IntersectionEvent between these two interfaces
         if min_intersect:
-            event = IntersectionEvent(min_intersect, [interface, min_interface])
+            event = IntersectionEvent(min_intersect, min_interfaces)
             self.events.add(event)
 
         # add the interface to the list
@@ -266,17 +270,20 @@ class ShockwaveDrawer:
         # we currently don't fill in any CapacityEvent interfaces
         assert above is not None and below is not None
 
-        # creat the new interface using the found above/below states
-        # goes outwards from this current point to higher times
-        new_interface = Interface(
-            cur.point,
-            self.diagram.get_interface_slope(above.density, below.density),
-            above,
-            below,
-            bounds=(cur.point, None),
-        )
+        # don't create new interface if there is no actual change in state
+        # see three intersection for an example
+        if above != below:
+            # creat the new interface using the found above/below states
+            # goes outwards from this current point to higher times
+            new_interface = Interface(
+                cur.point,
+                self.diagram.get_interface_slope(above.density, below.density),
+                above,
+                below,
+                bounds=(cur.point, None),
+            )
 
-        self._add_interface(new_interface)
+            self._add_interface(new_interface)
 
     def run(self):
         """Main function to generate the shockwave diagram given the inputs."""
@@ -294,6 +301,18 @@ class ShockwaveDrawer:
                 case EventType.capacity:
                     self._handle_capacity_event(cur)
                 case EventType.intersection:
+                    x: IntersectionEvent
+                    for x in self.events:
+                        if math.isclose(x.point.time, cur.point.time):
+                            if (
+                                x.point.position == cur.point.position
+                                and type(x) == type(cur)
+                                and len(x.interfaces) > len(cur.interfaces)
+                            ):
+                                cur = x
+                        else:
+                            break
+
                     self._handle_intersection_event(cur)
 
             self.update_figure()

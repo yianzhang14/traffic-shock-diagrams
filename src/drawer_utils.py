@@ -63,6 +63,9 @@ class dtPoint:
         """
         return shp.Point(self.time, self.position)
 
+    def __hash__(self) -> int:
+        return hash((round(self.time, 5), round(self.position, 5)))
+
 
 class EventType(Enum):
     """This enum encodes the possible types an event could be."""
