@@ -1,4 +1,6 @@
 # from augmenters.base_augmenter import TrafficAugmenter
+import math
+
 import matplotlib.pyplot as plt
 from sortedcontainers import SortedList
 
@@ -80,12 +82,11 @@ class ShockwaveDrawer:
 
         # find the interface that intersects the closest from the given interface
         for x in self.interfaces:
-            print(x, interface)
             assert not x.equivalent_to(interface)  # basic sanity check -- should never happen
             intersect = interface.intersection(x)
 
             # ignore overlaps and non-intersecting interfaces
-            if intersect is None or interface.has_endpoint(intersect) or x.has_endpoint(intersect):
+            if intersect is None or interface.has_endpoint(intersect):
                 continue
             elif not min_intersect or intersect.time < min_intersect.time:
                 min_intersect = intersect
@@ -117,7 +118,7 @@ class ShockwaveDrawer:
         """
 
         scale = 1 if below else -1
-        res: State | None = None
+        res: Interface | None = None
         min_dist = float("inf")
 
         # find the closest interface below/above the point and its relevant state
@@ -128,21 +129,23 @@ class ShockwaveDrawer:
 
             cur = interface.get_pos_at_time(point.time)
 
-            if cur is None:
+            if cur is None or math.isclose(point.position - cur, 0):
                 continue
 
             if scale * (point.position - cur) >= 0 and scale * (point.position - cur) < min_dist:
-                if below:
-                    res = interface.above
-                else:
-                    res = interface.below
+                res = interface
 
                 min_dist = scale * (point.position - cur)
 
         # return the found state or default state if none found
-        return res or self.default_state
+        if res:
+            if below:
+                return res.above
+            return res.below
 
-    def _handle_capacity_event(self, cur: CapacityEvent, above: State, below: State) -> None:
+        return self.default_state
+
+    def _handle_capacity_event(self, cur: CapacityEvent) -> None:
         """Private function for handling a capacity event. Determines what to do
         using the prior/posterior capacity (adjusted for the current state)
         and the fundamental diagram.
@@ -155,6 +158,9 @@ class ShockwaveDrawer:
             above (State): the state above the point of the capacity event
             below (State): the state below the point of the capacity event
         """
+        above = self._resolve_state(cur.point, below=False)
+        below = self._resolve_state(cur.point, below=True)
+
         # get prior/posterior capacity
         prior_capacity = below.flow if cur.prior_capacity == -1 else cur.prior_capacity
         posterior_capacity = (
@@ -175,29 +181,38 @@ class ShockwaveDrawer:
         else:
             # main interface of the event; direct result of the reduction in capacity
             main_interface_state = self.diagram.get_state_by_flow(posterior_capacity, below)
-            main_interface = Interface(
-                cur.point,
-                self.diagram.get_interface_slope(main_interface_state.density, below.density),
-                main_interface_state,
-                below,
-                bounds=(cur.point, None),
-            )
+
+            # same logic as below, but unsure if this ever happens
+            if main_interface_state != below:
+                main_interface = Interface(
+                    cur.point,
+                    self.diagram.get_interface_slope(main_interface_state.density, below.density),
+                    main_interface_state,
+                    below,
+                    bounds=(cur.point, None),
+                )
+
+                self._add_interface(main_interface)
 
             # the byproduct of the event -- for conservation of cars
             byproduct_interface_state = self.diagram.get_state_by_flow(
                 posterior_capacity, below, flip=True
             )
 
-            byproduct_interface = Interface(
-                cur.point,
-                self.diagram.get_interface_slope(above.density, byproduct_interface_state.density),
-                above,
-                byproduct_interface_state,
-                bounds=(cur.point, None),
-            )
+            # if we don't have a state difference here, there is no interface created
+            # consider a traffic light with empty state already above
+            if byproduct_interface_state != above:
+                byproduct_interface = Interface(
+                    cur.point,
+                    self.diagram.get_interface_slope(
+                        above.density, byproduct_interface_state.density
+                    ),
+                    above,
+                    byproduct_interface_state,
+                    bounds=(cur.point, None),
+                )
 
-            self._add_interface(main_interface)
-            self._add_interface(byproduct_interface)
+                self._add_interface(byproduct_interface)
 
     def _handle_intersection_event(self, cur: IntersectionEvent) -> None:
         """Handles an intersection event. Determines behavior purely using
@@ -225,6 +240,8 @@ class ShockwaveDrawer:
         minslope = float("inf")
         below = None
 
+        no_new_interface = False
+
         for interface in cur.interfaces:
             if interface.slope > maxslope:
                 maxslope = interface.slope
@@ -236,7 +253,13 @@ class ShockwaveDrawer:
 
             # chop off the interface endpoints while iterating
             # assumes that it will always be in the future -- i.e., upper bound
-            interface.add_cutoff(None, cur.point)
+            try:
+                interface.add_cutoff(None, cur.point)
+            except Exception as _:
+                no_new_interface = True
+
+        if no_new_interface:
+            return
 
         # this basically checks that above/below are not None -- may break on
         # intersection with user-inputted interfaces since
@@ -266,14 +289,10 @@ class ShockwaveDrawer:
             cur: Event = self.events.pop(0)
             print(f"processing {cur}")
 
-            # get the above/below states of the current event point
-            above = self._resolve_state(cur.point, below=False)
-            below = self._resolve_state(cur.point, below=True)
-
             # handle the vent based on its type
             match cur.type:
                 case EventType.capacity:
-                    self._handle_capacity_event(cur, above, below)
+                    self._handle_capacity_event(cur)
                 case EventType.intersection:
                     self._handle_intersection_event(cur)
 
