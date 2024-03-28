@@ -1,2 +1,4 @@
 temp.ipynb
 __pycache__
+data/*
+!.gitkeep

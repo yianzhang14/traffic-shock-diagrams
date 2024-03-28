@@ -290,17 +290,23 @@ class ShockwaveDrawer:
 
         self.figures = []
 
+        self.update_figure()
+
         # while there are more events to process
         while self.events:
             # get the first event (first event in time)
             cur: Event = self.events.pop(0)
             print(f"processing {cur}")
+            prev = len(self.interfaces)
 
             # handle the vent based on its type
             match cur.type:
                 case EventType.capacity:
                     self._handle_capacity_event(cur)
                 case EventType.intersection:
+                    # scan forward for a potentially more complete intersection event
+                    # that includes all the interfaces intersecting there -- needed for correct
+                    # above/below resolution of the new interface
                     x: IntersectionEvent
                     for x in self.events:
                         if math.isclose(x.point.time, cur.point.time):
@@ -315,7 +321,8 @@ class ShockwaveDrawer:
 
                     self._handle_intersection_event(cur)
 
-            self.update_figure()
+            if prev != len(self.interfaces):
+                self.update_figure()
 
     def update_figure(self):
         fig, ax = plt.subplots(figsize=(20, 10))
