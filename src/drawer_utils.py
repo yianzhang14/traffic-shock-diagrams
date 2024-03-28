@@ -93,7 +93,7 @@ class Event(ABC):
         Returns:
             bool: whether or not the events are equal
         """
-        return self.point == other.point
+        return self.point.time == other.point.time
 
     def __lt__(self, other: Event) -> bool:
         """Overload of the less than operator for events. One event is less than another
@@ -105,9 +105,7 @@ class Event(ABC):
         Returns:
             bool: whether or not this event is less than the other
         """
-        return (self.point.time < other.point.time) or (
-            self.point.position < other.point.position
-        )  # tiebreaker
+        return self.point.time < other.point.time
 
 
 @dataclass
