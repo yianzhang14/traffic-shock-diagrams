@@ -83,6 +83,9 @@ class Event(ABC):
 
     point: dtPoint
     type: EventType
+    # priority to determine order to handle events; want intersection events to be processed first
+    # to handle weird state resolutions
+    priority: int
 
     def __eq__(self, other: Event) -> bool:
         """Overload of equality for events. Two events are equal if they have the same time.
@@ -94,7 +97,7 @@ class Event(ABC):
         Returns:
             bool: whether or not the events are equal
         """
-        return self.point.time == other.point.time
+        return self.point == other.point and self.priority == other.priority
 
     def __lt__(self, other: Event) -> bool:
         """Overload of the less than operator for events. One event is less than another
@@ -106,6 +109,16 @@ class Event(ABC):
         Returns:
             bool: whether or not this event is less than the other
         """
+
+        if self == other:
+            return False
+
+        if math.isclose(self.point.time, other.point.time):
+            if self.priority == other.priority:
+                return self.point.position < other.point.position
+
+            return self.priority < other.priority
+
         return self.point.time < other.point.time
 
 
@@ -123,7 +136,7 @@ class IntersectionEvent(Event):
             interfaces (list[Interface]): the interfaces that are intersecting at this event
         """
 
-        super().__init__(point, EventType.intersection)
+        super().__init__(point, EventType.intersection, 1)
 
         self.interfaces = interfaces  # always make the acting interface the first one
 
@@ -157,7 +170,7 @@ class CapacityEvent(Event):
             posterior_capacity (float, optional): the capacity following the event
             (vehicles / second). Must be positive or -1. Defaults to -1.
         """
-        super().__init__(point, EventType.capacity)
+        super().__init__(point, EventType.capacity, 2)
 
         self.interface = interface
 
@@ -199,6 +212,18 @@ class State:
             float: slope between these two states (meters / second)
         """
         return (self.flow - other.flow) / (self.density - other.density)
+
+    def __eq__(self, other) -> bool:
+        """Overload of state equality. Two states are equal if they have the same density
+        and flow values, up to floating point error.
+
+        Args:
+            other (other): state to compare with
+
+        Returns:
+            bool: whether or not they are equal
+        """
+        return math.isclose(self.density, other.density) and math.isclose(self.flow, other.flow)
 
 
 class Interface:  # boundary between two states
