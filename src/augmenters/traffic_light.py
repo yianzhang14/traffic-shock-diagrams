@@ -35,12 +35,14 @@ class TrafficLight(TrafficAugmenter):
         """
         self.pos = pos  # where the traffic light is
         self.cycles = cycles  # list of the delays of each of the cycles
-        self.state = init_state  # initial state -- an index for self.cycles (will wrap around)
+
+        # initial state -- an index for self.cycles (will wrap around)
+        self.init_state = init_state
         self.blocking_states = (
             blocking_states  # list of whether each corresponding cycle is blocking or not
         )
 
-        if not (self.state < len(self.cycles) and self.state >= 0):
+        if not (self.init_state < len(self.cycles) and self.init_state >= 0):
             raise ValueError("The provided initial state is invalid.")
 
         if len(blocking_states) != len(cycles):
@@ -53,18 +55,22 @@ class TrafficLight(TrafficAugmenter):
     @override
     def init(self, simulation_time: float, events: SortedList, interfaces: list[Interface]):
         time = 0
+        state = self.init_state
 
         # continue adding capacity events to the event queue until we are out of time
         while time <= simulation_time:
-            if self.blocking_states[self.state]:
+            if self.blocking_states[state]:
                 start = dtPoint(time, self.pos)
-                end = dtPoint(time + self.cycles[self.state], self.pos)
+                end = dtPoint(time + self.cycles[state], self.pos)
 
                 cur = UserInterface(start, 0, self, lower_bound=start, upper_bound=end)
                 interfaces.append(cur)
 
-                events.add(CapacityEvent(start, cur, posterior_capacity=0))
-                events.add(CapacityEvent(end, cur, prior_capacity=0))
+                start_event = CapacityEvent(start, cur, posterior_capacity=0)
+                events.add(start_event)
 
-            time += self.cycles[self.state]
-            self.state = (self.state + 1) % len(self.cycles)
+                end_event = CapacityEvent(end, cur, prior_capacity=0)
+                events.add(end_event)
+
+            time += self.cycles[state]
+            state = (state + 1) % len(self.cycles)
