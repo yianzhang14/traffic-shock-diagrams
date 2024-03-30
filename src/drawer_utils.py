@@ -101,6 +101,8 @@ class Event(ABC):
     # to handle weird state resolutions
     priority: int
 
+    disabled: bool = field(default=False, kw_only=True)
+
     def __eq__(self, other: Event) -> bool:
         """Overload of equality for events. Two events are equal if they have the same time.
         Only defined for comparison/sorting convenience.
@@ -357,7 +359,7 @@ class Interface:  # boundary between two states
 
         return self.point.position + self.slope * (time - self.point.time)
 
-    def add_cutoff(self, lower: Optional[dtPoint], upper: Optional[dtPoint]):
+    def add_cutoff(self, lower: Optional[dtPoint] = None, upper: Optional[dtPoint] = None):
         """Adds a cutoff to the interface. The points must be along the line defined by
         the interface.
 
@@ -433,6 +435,14 @@ class Interface:  # boundary between two states
 
     def is_user_generated(self) -> bool:
         return False
+
+    # for now, define equality by the id/address of an object
+
+    def __eq__(self, other: Interface) -> bool:
+        return id(self) == id(other)
+
+    def __hash__(self) -> int:
+        return hash(id(self))
 
 
 class UserInterface(Interface):

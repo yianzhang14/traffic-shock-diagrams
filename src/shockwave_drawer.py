@@ -57,9 +57,11 @@ class ShockwaveDrawer:
         self.default_state = self.diagram.get_state(init_density)
         self.interfaces: list[Interface] = []
 
-        # use this to maintain the invariant that there should only be one IntersectionEvent
-        # at any given point (handle 3+ interface intersections)
+        # use this to maintain the invariant that there should only be one event
+        # at any given point -- this handles 3+ interface intersections
         self.intersections: dict[dtPoint, IntersectionEvent] = {}
+
+        self.latent_events: dict[Interface, tuple[float, float]] = {}
 
         # initialize the augments -- add their events to the event queue
         for augment in augments:
@@ -122,11 +124,13 @@ class ShockwaveDrawer:
     def _resolve_state(self, point: dtPoint, below: bool = True) -> State:
         """Private function to resolve the upstream and downstream state from a point.
 
-        Idea: on the dt-plane, you can get the interface that pertains to an event by looking
+        NOTE: on the dt-plane, you can get the interface that pertains to an event by looking
         directly down from the event point (in the distance dimension) and taking the
         above state of the closest interface. Same idea for getting the above state
 
-        TODO: make this more efficient by indexing interfaces by position
+        OPTIMIZE: make this more efficient with segment trees
+        TODO: handle user-generated interfaces more elegantly -- currently allow
+        user-generated interfaces to be considered, as long as they have an above/below state
 
         Args:
             point (dtPoint): the point to resolve the state for
@@ -142,8 +146,10 @@ class ShockwaveDrawer:
 
         # find the closest interface below/above the point and its relevant state
         for interface in self.interfaces:
-            # ignore overlapping interfaces
-            if interface.has_endpoint(point):
+            # ignore unhandled user-generated interfaces (& possibly filled-in
+            # non-user-generated ones, but those do not exist)
+            if interface.above is None:
+                assert interface.is_user_generated()
                 continue
 
             cur = interface.get_pos_at_time(point.time)
@@ -158,9 +164,6 @@ class ShockwaveDrawer:
 
         # return the found state or default state if none found
         if res:
-            # TODO: make this more robust
-            if res.above is None:
-                return self.default_state
             if below:
                 return res.above
             return res.below
@@ -194,6 +197,12 @@ class ShockwaveDrawer:
         # we are limited by the flow of the incoming state IF the state is queued
         if not self.diagram.state_is_queued(below):
             posterior_capacity = min(posterior_capacity, below.flow)
+
+        # XXX: currently, if we have a capacity event with a prior/posterior capacity of 0, then we
+        # put it down as a latent event -- this is a bit too hard-codey
+        if float_isclose(posterior_capacity, 0) and float_isclose(prior_capacity, 0):
+            self.latent_events[cur.interface] = (cur.prior_capacity, cur.posterior_capacity)
+            return
 
         # if we have an increase in capacity and there is not enough density (queuing)
         # to take advantage of that increase, do nothing -- no interface created
@@ -254,14 +263,48 @@ class ShockwaveDrawer:
         # resolve the actual interfaces at question -- during execution, may have invalidated some
         # so need to remove the interfaces that would not longer be cutoff here
         interfaces: list[Interface] = []
+        user_interface: Interface | None = None
 
         for interface in cur.interfaces:
             if interface.get_pos_at_time(cur.point.time) is None:
                 continue
             interfaces.append(interface)
 
+            if interface.is_user_generated():
+                # assume we cannot have user interface intersections
+                # we literally can't -- they aren't generated on augment init
+                assert user_interface is None
+                user_interface = interface
+
         # don't do anything if there is nothing else to do
         if len(interfaces) <= 1:
+            return
+
+        # assumption: if we ever have an intersection with an user-generated interface,
+        # then we have a truncation on our hands
+        # in this case, the intersection is not "real" and we leave it to the
+        # capacity event to handle creating things
+        if user_interface:
+            if user_interface in self.latent_events:
+                prior_cap, post_cap = self.latent_events.pop(user_interface)
+                self._handle_capacity_event(
+                    CapacityEvent(
+                        cur.point,
+                        user_interface,
+                        prior_capacity=prior_cap,
+                        posterior_capacity=post_cap,
+                    )
+                )
+
+                above = self._resolve_state(cur.point, below=False)
+                below = self._resolve_state(cur.point, below=True)
+
+                for interface in interfaces:
+                    if interface == user_interface:
+                        continue
+
+                    interface.add_cutoff(upper=cur.point)
+
             return
 
         # determine which state is above/below using interface slopes
@@ -284,7 +327,7 @@ class ShockwaveDrawer:
             # chop off the interface endpoints while iterating
             # assumes that it will always be in the future -- i.e., upper bound
             try:
-                interface.add_cutoff(None, cur.point)
+                interface.add_cutoff(upper=cur.point)
             except Exception as _:
                 print(interface, _)
                 no_new_interface = True
@@ -321,9 +364,12 @@ class ShockwaveDrawer:
 
         # while there are more events to process
         while self.events:
-            print(self.events)
             # get the first event (first event in time)
             cur: Event = self.events.pop(0)
+
+            if cur.disabled:
+                continue
+
             print(f"processing {cur}")
             prev = len(self.interfaces)
 
