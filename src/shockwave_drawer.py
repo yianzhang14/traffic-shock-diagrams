@@ -1,4 +1,3 @@
-# from augmenters.base_augmenter import TrafficAugmenter
 import matplotlib.pyplot as plt
 from sortedcontainers import SortedList
 
@@ -58,6 +57,10 @@ class ShockwaveDrawer:
         self.default_state = self.diagram.get_state(init_density)
         self.interfaces: list[Interface] = []
 
+        # use this to maintain the invariant that there should only be one IntersectionEvent
+        # at any given point (handle 3+ interface intersections)
+        self.intersections: dict[dtPoint, IntersectionEvent] = {}
+
         # initialize the augments -- add their events to the event queue
         for augment in augments:
             augment.init(self.simulation_time, self.events, self.interfaces)
@@ -97,8 +100,17 @@ class ShockwaveDrawer:
 
         # if we have an interesct, generate an IntersectionEvent between these two interfaces
         if min_intersect:
-            event = IntersectionEvent(min_intersect, min_interfaces)
-            self.events.add(event)
+            # update an existing intersection event by adding it to the list of interfaces
+            if min_intersect in self.intersections:
+                event: IntersectionEvent = self.intersections.get(min_intersect)
+                for interface in min_interfaces:
+                    if interface not in event.interfaces:
+                        event.interfaces.append(interface)
+            # create a brand new intersection event
+            else:
+                event = IntersectionEvent(min_intersect, min_interfaces)
+                self.events.add(event)
+                self.intersections[min_intersect] = event
 
         # add the interface to the list
         self.interfaces.append(interface)
@@ -179,8 +191,6 @@ class ShockwaveDrawer:
         if not self.diagram.state_is_queued(below):
             posterior_capacity = min(posterior_capacity, below.flow)
 
-        print(above, below, prior_capacity, posterior_capacity)
-
         # if we have an increase in capacity and there is not enough density (queuing)
         # to take advantage of that increase, do nothing -- no interface created
         if posterior_capacity >= prior_capacity and not self.diagram.state_is_queued(below):
@@ -227,8 +237,6 @@ class ShockwaveDrawer:
         the intersecting interfaces in question and basic dt-diagram
         resolutions.
 
-        TODO: is an event valid if it just cuts off one of the interfaces? Currently
-        only valid if it cuts off all the interfaces in question.
         TODO: handle the assertion that the above/below states are not None for CapEvent interfaces
 
         Args:
@@ -236,11 +244,21 @@ class ShockwaveDrawer:
         """
         assert len(cur.interfaces) >= 2
 
-        # determine if this event is still valid -- i.e., it would actually
-        # cutoff the interfaces
+        # remove the intersectionevent from the dictionary
+        self.intersections.pop(cur.point)
+
+        # resolve the actual interfaces at question -- during execution, may have invalidated some
+        # so need to remove the interfaces that would not longer be cutoff here
+        interfaces: list[Interface] = []
+
         for interface in cur.interfaces:
             if interface.get_pos_at_time(cur.point.time) is None:
-                return
+                continue
+            interfaces.append(interface)
+
+        # don't do anything if there is nothing else to do
+        if len(interfaces) <= 1:
+            return
 
         # determine which state is above/below using interface slopes
         maxslope = float("-inf")
@@ -250,7 +268,7 @@ class ShockwaveDrawer:
 
         no_new_interface = False
 
-        for interface in cur.interfaces:
+        for interface in interfaces:
             if interface.slope > maxslope:
                 maxslope = interface.slope
                 below = interface.below
@@ -299,6 +317,7 @@ class ShockwaveDrawer:
 
         # while there are more events to process
         while self.events:
+            print(self.events)
             # get the first event (first event in time)
             cur: Event = self.events.pop(0)
             print(f"processing {cur}")
@@ -309,21 +328,6 @@ class ShockwaveDrawer:
                 case EventType.capacity:
                     self._handle_capacity_event(cur)
                 case EventType.intersection:
-                    # scan forward for a potentially more complete intersection event
-                    # that includes all the interfaces intersecting there -- needed for correct
-                    # above/below resolution of the new interface
-                    x: IntersectionEvent
-                    for x in self.events:
-                        if float_isclose(x.point.time, cur.point.time):
-                            if (
-                                float_isclose(x.point.position, cur.point.position)
-                                and type(x) == type(cur)
-                                and len(x.interfaces) > len(cur.interfaces)
-                            ):
-                                cur = x
-                        else:
-                            break
-
                     self._handle_intersection_event(cur)
 
             if prev != len(self.interfaces):

@@ -12,6 +12,7 @@ import shapely as shp
 
 # from .fundamental_diagram import FundamentalDiagram
 
+DIGIT_TOLERANCE = 4
 ABS_TOL = 1e-4
 
 
@@ -70,7 +71,7 @@ class dtPoint:
         return shp.Point(self.time, self.position)
 
     def __hash__(self) -> int:
-        return hash((round(self.time, 5), round(self.position, 5)))
+        return hash((round(self.time, DIGIT_TOLERANCE), round(self.position, DIGIT_TOLERANCE)))
 
 
 class EventType(Enum):
