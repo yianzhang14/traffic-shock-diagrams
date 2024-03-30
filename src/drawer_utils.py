@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-
 from abc import ABC
 from dataclasses import dataclass, field
 from enum import Enum
@@ -255,7 +254,8 @@ class Interface:  # boundary between two states
         slope: float,
         above: Optional[State],
         below: Optional[State],
-        bounds: tuple[Optional[dtPoint], Optional[dtPoint]] = (None, None),
+        lower_bound: Optional[dtPoint] = None,
+        upper_bound: Optional[dtPoint] = None,
     ):
         """Constructor of an Interface
 
@@ -270,11 +270,13 @@ class Interface:  # boundary between two states
         self.point = point
         self.slope = slope
 
-        # self.bounds: list[tuple[dtPoint, dtPoint]] = bounds  # limit 2, number of endpoints
-        self.endpoints: list[dtPoint] = [
-            bounds[0],
-            bounds[1],
-        ]  # lower, upper (with respect to time)
+        self.endpoints: list[dtPoint] = [lower_bound, upper_bound]
+
+        if lower_bound is None:
+            self.endpoints[0] = dtPoint(0, self.point.position - self.slope * self.point.time)
+
+        if upper_bound is None:
+            self.endpoints[1] = dtPoint(float("inf"), float("inf"))
 
         self.above = above
         self.below = below
@@ -386,15 +388,11 @@ class Interface:  # boundary between two states
 
         # update the endpoint bounds
         if lower is not None:
-            if self.endpoints[0] is None:
-                self.endpoints[0] = lower
-            elif self.endpoints[0].time < lower.time:
+            if self.endpoints[0].time < lower.time:
                 self.endpoints[0] = lower
 
         if upper is not None:
-            if self.endpoints[1] is None:
-                self.endpoints[1] = upper
-            elif self.endpoints[1].time > upper.time:
+            if self.endpoints[1].time > upper.time:
                 self.endpoints[1] = upper
 
     def equivalent_to(self, other: Interface) -> bool:
@@ -408,14 +406,8 @@ class Interface:  # boundary between two states
             bool: whether or not the interfaces are functionally equivalent
         """
         # if the two interfaces are disjoint in terms of endpoints, they are not equivalent
-        if (
-            other.endpoints[1]
-            and self.endpoints[0]
-            and other.endpoints[1].time < self.endpoints[0].time
-        ) or (
-            self.endpoints[1]
-            and other.endpoints[0]
-            and self.endpoints[1].time < other.endpoints[0].time
+        if (other.endpoints[1].time < self.endpoints[0].time) or (
+            self.endpoints[1].time < other.endpoints[0].time
         ):
             return False
 

@@ -142,6 +142,9 @@ class ShockwaveDrawer:
 
         # return the found state or default state if none found
         if res:
+            # TODO: make this more robust
+            if res.above is None:
+                return self.default_state
             if below:
                 return res.above
             return res.below
@@ -176,6 +179,8 @@ class ShockwaveDrawer:
         if not self.diagram.state_is_queued(below):
             posterior_capacity = min(posterior_capacity, below.flow)
 
+        print(above, below, prior_capacity, posterior_capacity)
+
         # if we have an increase in capacity and there is not enough density (queuing)
         # to take advantage of that increase, do nothing -- no interface created
         if posterior_capacity >= prior_capacity and not self.diagram.state_is_queued(below):
@@ -192,7 +197,7 @@ class ShockwaveDrawer:
                     self.diagram.get_interface_slope(main_interface_state.density, below.density),
                     main_interface_state,
                     below,
-                    bounds=(cur.point, None),
+                    lower_bound=cur.point,
                 )
 
                 self._add_interface(main_interface)
@@ -212,7 +217,7 @@ class ShockwaveDrawer:
                     ),
                     above,
                     byproduct_interface_state,
-                    bounds=(cur.point, None),
+                    lower_bound=cur.point,
                 )
 
                 self._add_interface(byproduct_interface)
@@ -280,7 +285,7 @@ class ShockwaveDrawer:
                 self.diagram.get_interface_slope(above.density, below.density),
                 above,
                 below,
-                bounds=(cur.point, None),
+                lower_bound=cur.point,
             )
 
             self._add_interface(new_interface)

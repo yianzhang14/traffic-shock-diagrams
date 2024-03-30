@@ -60,7 +60,7 @@ class TrafficLight(TrafficAugmenter):
                 start = dtPoint(time, self.pos)
                 end = dtPoint(time + self.cycles[self.state], self.pos)
 
-                cur = Interface(start, 0, None, None, bounds=[start, end])
+                cur = Interface(start, 0, None, None, lower_bound=start, upper_bound=end)
                 interfaces.append(cur)
 
                 events.add(CapacityEvent(start, cur, posterior_capacity=0))
