@@ -70,7 +70,8 @@ class ShockwaveDrawer:
         Handles basic sanity checking (no duplicate interfaces) and generates IntersectionEvents
         as needed.
 
-        TODO: try kdTrees for faster intersection resolution
+        TODO: somehow add hashing for interfaces to simply do set intersection for updating
+        existing intersection events
 
         Args:
             interface (Interface): the interface to add
@@ -96,11 +97,14 @@ class ShockwaveDrawer:
                 min_intersect = intersect
                 min_interfaces = [x]
 
+        # add the interface in question to the list since that is part of the event
         min_interfaces.append(interface)
 
         # if we have an interesct, generate an IntersectionEvent between these two interfaces
         if min_intersect:
             # update an existing intersection event by adding it to the list of interfaces
+            # can just do address comparison (no __eq__ overwriting) since we are only looking
+            # at existing interfaces (i think -- should check)
             if min_intersect in self.intersections:
                 event: IntersectionEvent = self.intersections.get(min_intersect)
                 for interface in min_interfaces:

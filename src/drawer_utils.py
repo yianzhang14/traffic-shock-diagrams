@@ -6,7 +6,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from functools import total_ordering
 from itertools import count
-from typing import Optional
+from typing import TYPE_CHECKING, Optional, override
+
+# need to do this to avoid a circular import
+if TYPE_CHECKING:
+    from augmenters.base_augmenter import TrafficAugmenter
 
 import shapely as shp
 
@@ -426,3 +430,30 @@ class Interface:  # boundary between two states
         return float_isclose(self.point.get_slope(other.point), other.slope) and float_isclose(
             other.slope, self.slope
         )
+
+    def is_user_generated(self) -> bool:
+        return False
+
+
+class UserInterface(Interface):
+    """This class is a specialization of Interface for the interfaces created
+    by user-inputted traffic augments. In particular, these interfaces do not have upper/below
+    states set as they are not known initially, and they have a pointer to the augment they were
+    generated from.
+    """
+
+    def __init__(
+        self,
+        point: dtPoint,
+        slope: float,
+        augment: TrafficAugmenter,
+        lower_bound: Optional[dtPoint] = None,
+        upper_bound: Optional[dtPoint] = None,
+    ):
+        super().__init__(point, slope, None, None, lower_bound=lower_bound, upper_bound=upper_bound)
+
+        self.augment = augment
+
+    @override
+    def is_user_generated(self) -> bool:
+        return True

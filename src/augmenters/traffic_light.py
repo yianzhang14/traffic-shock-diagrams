@@ -2,7 +2,7 @@ from typing import override
 
 from sortedcontainers import SortedList
 
-from ..drawer_utils import CapacityEvent, Interface, dtPoint
+from ..drawer_utils import CapacityEvent, Interface, UserInterface, dtPoint
 from .base_augmenter import TrafficAugmenter
 
 
@@ -60,7 +60,7 @@ class TrafficLight(TrafficAugmenter):
                 start = dtPoint(time, self.pos)
                 end = dtPoint(time + self.cycles[self.state], self.pos)
 
-                cur = Interface(start, 0, None, None, lower_bound=start, upper_bound=end)
+                cur = UserInterface(start, 0, self, lower_bound=start, upper_bound=end)
                 interfaces.append(cur)
 
                 events.add(CapacityEvent(start, cur, posterior_capacity=0))
