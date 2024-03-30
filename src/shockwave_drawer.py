@@ -337,9 +337,9 @@ class ShockwaveDrawer:
             p1 = interface.endpoints[0]
             p2 = interface.endpoints[1]
 
-            if p1 is None:
+            if p1.time == float("inf"):
                 p1 = dtPoint(0, interface.get_pos_at_time(0))
-            if p2 is None:
+            if p2.time == float("inf"):
                 p2 = dtPoint(
                     self.simulation_time + 5, interface.get_pos_at_time(self.simulation_time + 5)
                 )
