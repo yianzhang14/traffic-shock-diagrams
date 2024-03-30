@@ -11,6 +11,7 @@ from .drawer_utils import (
     Interface,
     IntersectionEvent,
     State,
+    UserInterface,
     dtPoint,
     float_isclose,
 )
@@ -61,7 +62,9 @@ class ShockwaveDrawer:
         # at any given point -- this handles 3+ interface intersections
         self.intersections: dict[dtPoint, IntersectionEvent] = {}
 
-        self.latent_events: dict[Interface, tuple[float, float]] = {}
+        # these map UserInterfaces to the original prior/posterior capacities of a CapacityEvent
+        # that was postponed due to being restricted to 0/0 prior/post capacity
+        self.latent_events: dict[UserInterface, tuple[float, float]] = {}
 
         # initialize the augments -- add their events to the event queue
         for augment in augments:
@@ -124,7 +127,7 @@ class ShockwaveDrawer:
     def _resolve_state(self, point: dtPoint, below: bool = True) -> State:
         """Private function to resolve the upstream and downstream state from a point.
 
-        NOTE: on the dt-plane, you can get the interface that pertains to an event by looking
+        Reasoning: on the dt-plane, you can get the interface that pertains to an event by looking
         directly down from the event point (in the distance dimension) and taking the
         above state of the closest interface. Same idea for getting the above state
 
@@ -176,7 +179,7 @@ class ShockwaveDrawer:
         and the fundamental diagram.
 
         TODO: determine whether we need to store latent capacity information (see the `pass` below)
-        TODO: set the event interface above/below states at the end (don't really need to)
+        TODO: set the event interface above/below states at the end -- should do this
 
         Args:
             cur (CapacityEvent): The capacity event to handle
@@ -198,8 +201,9 @@ class ShockwaveDrawer:
         if not self.diagram.state_is_queued(below):
             posterior_capacity = min(posterior_capacity, below.flow)
 
-        # XXX: currently, if we have a capacity event with a prior/posterior capacity of 0, then we
-        # put it down as a latent event -- this is a bit too hard-codey
+        # currently, if we have a capacity event with a prior/posterior capacity of 0, then we
+        # put it down as a latent event -- i.e., we postpone it for later,
+        # later being an IntersectionEvent in which the state is no longer empty
         if float_isclose(posterior_capacity, 0) and float_isclose(prior_capacity, 0):
             self.latent_events[cur.interface] = (cur.prior_capacity, cur.posterior_capacity)
             return
@@ -281,12 +285,17 @@ class ShockwaveDrawer:
             return
 
         # assumption: if we ever have an intersection with an user-generated interface,
-        # then we have a truncation on our hands
-        # in this case, the intersection is not "real" and we leave it to the
-        # capacity event to handle creating things
+        # this is because the user-generated interface started within an empty state
+        # (the converse where the user-generated interface hit an empty state is impossible
+        # since it would've made an interface below it that would hit the empty state instead)
+        # in this case, we need some custom logic to handle things
         if user_interface:
+            # if the current interface is a latent event, we process it as such
             if user_interface in self.latent_events:
+                # extract prior/post capacity to inform the capacity event
                 prior_cap, post_cap = self.latent_events.pop(user_interface)
+
+                # handle the capacity event using the information we have
                 self._handle_capacity_event(
                     CapacityEvent(
                         cur.point,
@@ -296,14 +305,19 @@ class ShockwaveDrawer:
                     )
                 )
 
-                above = self._resolve_state(cur.point, below=False)
-                below = self._resolve_state(cur.point, below=True)
-
+                # XXX: truncate everything accordingly -- this would only work for traffic lights
+                # since this assumes that there is no need for an interface above the user-generated
+                # interface -- i.e. this implies that the state above the user-generated interface
+                # is empty
                 for interface in interfaces:
                     if interface == user_interface:
                         continue
 
                     interface.add_cutoff(upper=cur.point)
+
+                # optional: truncate the user-generated interface to actually
+                # start where it is supposed to (where there is flow to manipulate)
+                user_interface.add_cutoff(lower=cur.point)
 
             return
 
@@ -367,6 +381,7 @@ class ShockwaveDrawer:
             # get the first event (first event in time)
             cur: Event = self.events.pop(0)
 
+            # support disabling of events -- currently unused
             if cur.disabled:
                 continue
 
