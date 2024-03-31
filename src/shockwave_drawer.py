@@ -25,6 +25,8 @@ from .fundamental_diagram import FundamentalDiagram
 
 # from .state_handler import StateHandler
 
+PLOT_THRESHOLD_OFFSET = 5
+
 
 class ShockwaveDrawer:
     """This encapsulates the main logic for creating a situation and determining
@@ -468,7 +470,7 @@ class ShockwaveDrawer:
         for interface in self.interfaces:
             p1 = interface.endpoints[0]
 
-            max_time = max(max_time, p1.time + 5)
+            max_time = max(max_time, p1.time + PLOT_THRESHOLD_OFFSET)
 
         for interface in self.interfaces:
             p1 = interface.endpoints[0]
@@ -525,8 +527,8 @@ class ShockwaveDrawer:
 
                     if p2.time == float("inf"):
                         p2 = dtPoint(
-                            max_time + 5,
-                            cur.get_pos_at_time(max_time + 5),
+                            max_time + PLOT_THRESHOLD_OFFSET,
+                            cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET),
                         )
 
                     ax.plot(
