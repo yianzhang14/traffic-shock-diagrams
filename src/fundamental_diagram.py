@@ -80,7 +80,7 @@ class FundamentalDiagram:
         if not (density >= 0 and density <= self.jam_density):
             raise ValueError("Density invalid -- not in the fundamental diagram")
 
-        flow = self.func(density)
+        flow: float = self.func(density).item()
 
         return State(density, flow)
 

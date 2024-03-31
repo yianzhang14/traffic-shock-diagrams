@@ -229,7 +229,10 @@ class State:
         """
         return (self.flow - other.flow) / (self.density - other.density)
 
-    def __eq__(self, other) -> bool:
+    def get_slope(self) -> float:
+        return self.flow / self.density
+
+    def __eq__(self, other: State) -> bool:
         """Overload of state equality. Two states are equal if they have the same density
         and flow values, up to floating point error.
 
@@ -240,6 +243,9 @@ class State:
             bool: whether or not they are equal
         """
         return float_isclose(self.density, other.density) and float_isclose(self.flow, other.flow)
+
+    def __hash__(self) -> int:
+        return hash((round(self.density, DIGIT_TOLERANCE), round(self.flow, DIGIT_TOLERANCE)))
 
 
 class Interface:  # boundary between two states
@@ -352,9 +358,7 @@ class Interface:  # boundary between two states
         Returns:
             Optional[float]: the position of the interface at the time, if defined; None otherwise
         """
-        if (self.endpoints[1] and self.endpoints[1].time < time) or (
-            self.endpoints[0] and self.endpoints[0].time > time
-        ):
+        if (self.endpoints[1].time < time) or (self.endpoints[0].time > time):
             return None
 
         return self.point.position + self.slope * (time - self.point.time)
@@ -467,3 +471,19 @@ class UserInterface(Interface):
     @override
     def is_user_generated(self) -> bool:
         return True
+
+
+class Trajectory(Interface):
+    """This class basically serves as a dummy interface for plotting trajectories, as
+    an interface is inherently a line with endpoints, which is exactly what
+    trajectories are.
+    """
+
+    def __init__(
+        self,
+        point: dtPoint,
+        slope: float,
+        lower_bound: Optional[dtPoint] = None,
+        upper_bound: Optional[dtPoint] = None,
+    ):
+        super().__init__(point, slope, None, None, lower_bound=lower_bound, upper_bound=upper_bound)

@@ -1,7 +1,12 @@
+from typing import Optional
+
 import matplotlib.pyplot as plt
+import numpy as np
+import seaborn as sns
 from sortedcontainers import SortedList
 
-from src.custom_types import Axes
+from src.augmenters.base_augmenter import TrafficAugmenter
+from src.custom_types import Axes, Figure
 
 from .augmenters.traffic_light import TrafficLight
 from .drawer_utils import (
@@ -11,6 +16,7 @@ from .drawer_utils import (
     Interface,
     IntersectionEvent,
     State,
+    Trajectory,
     UserInterface,
     dtPoint,
     float_isclose,
@@ -55,7 +61,16 @@ class ShockwaveDrawer:
                 "The provided initial density is not valid for the provided fundamental diagram."
             )
 
+        # default state given the initial density
         self.default_state = self.diagram.get_state(init_density)
+
+        self.augments: list[TrafficAugmenter] = augments
+
+    def _setup(self):
+        """This function initializes all the data structures needed to run through the
+        shockwave drawer. If already run through once, this resets all the data structures
+        for a correct rerun."""
+        # interfaces created throughout the drawer lifetime
         self.interfaces: list[Interface] = []
 
         # use this to maintain the invariant that there should only be one event
@@ -67,8 +82,10 @@ class ShockwaveDrawer:
         self.latent_events: dict[UserInterface, tuple[float, float]] = {}
 
         # initialize the augments -- add their events to the event queue
-        for augment in augments:
+        for augment in self.augments:
             augment.init(self.simulation_time, self.events, self.interfaces)
+
+        self.colors: dict[tuple[State, State], np.ndarray] = dict()
 
     def _add_interface(self, interface: Interface):
         """Private function to add an interface to the list of generated interfaces.
@@ -372,9 +389,8 @@ class ShockwaveDrawer:
     def run(self):
         """Main function to generate the shockwave diagram given the inputs."""
 
-        self.figures = []
-
-        self.update_figure()
+        # setup required data structures
+        self._setup()
 
         # while there are more events to process
         while self.events:
@@ -386,7 +402,6 @@ class ShockwaveDrawer:
                 continue
 
             print(f"processing {cur}")
-            prev = len(self.interfaces)
 
             # handle the vent based on its type
             match cur.type:
@@ -395,26 +410,143 @@ class ShockwaveDrawer:
                 case EventType.intersection:
                     self._handle_intersection_event(cur)
 
-            if prev != len(self.interfaces):
-                self.update_figure()
+    def _find_closest_intersection(self, cur: Trajectory) -> Optional[tuple[dtPoint, Interface]]:
+        """This function is purely for generating trajectories. It finds the
+        first intersection between a trajectory and generated interface to the right
+        of the trajectory's left endpoint.
 
-    def update_figure(self):
+        Args:
+            cur (Trajectory): the trajectory to query intersections for
+
+        Returns:
+            Optional[tuple[dtPoint, Interface]]: the intersection point and the interface
+            the trajectory intersected with
+        """
+        min_intersect_time = float("inf")
+        res: tuple[dtPoint, Interface] | None = None
+
+        for interface in self.interfaces:
+            # ignore unhandled user-generated interfaces (& possibly filled-in
+            # non-user-generated ones, but those do not exist)
+
+            intersection = interface.intersection(cur)
+
+            if intersection is None or cur.has_endpoint(intersection):
+                continue
+
+            if intersection.time < min_intersect_time:
+                min_intersect_time = intersection.time
+                res = (intersection, interface)
+
+        return res
+
+    def create_figure_plt(
+        self, with_trajectories=False, num_trajectories: int = 100
+    ) -> tuple[Figure, Axes]:
+        """This function generates a matplotlib figure showing the fundamental digram,
+        using the currently generated interfaces stored in self.interfaces.
+
+        Trajectories can also be plotted, if specified.
+
+        Args:
+            with_trajectories (bool, optional): Whether or not to plot trajectories.
+            Defaults to False.
+
+        Returns:
+            tuple[Figure, Axes]: the figure and axes of the generated image
+        """
+
         fig, ax = plt.subplots(figsize=(20, 10))
         ax: Axes
+
+        color_space = sns.color_palette("tab10", int(len(self.interfaces) ** 0.5) + 10)
+        idx = 0
+
+        max_pos: float = -1
+        max_time: float = -1
+
+        for interface in self.interfaces:
+            p1 = interface.endpoints[0]
+
+            max_time = max(max_time, p1.time + 5)
 
         for interface in self.interfaces:
             p1 = interface.endpoints[0]
             p2 = interface.endpoints[1]
 
-            if p1.time == float("inf"):
-                p1 = dtPoint(0, interface.get_pos_at_time(0))
+            pos = interface.get_pos_at_time(max_time)
+
             if p2.time == float("inf"):
+                max_pos = max(max_pos, pos)
                 p2 = dtPoint(
-                    self.simulation_time + 5, interface.get_pos_at_time(self.simulation_time + 5)
+                    max_time,
+                    pos,
                 )
 
-            if p1 != p2:
-                ax.plot((p1.time, p2.time), (p1.position, p2.position), marker="o")
+            color = "black"
 
-        self.figures.append((fig, ax))
+            if not interface.is_user_generated():
+                tup: tuple[State, State] = (interface.above, interface.below)
+
+                if tup in self.colors:
+                    color = self.colors[tup]
+                else:
+                    color = color_space[idx]
+                    idx += 1
+                    self.colors[tup] = color
+
+            if p1 != p2:
+                ax.plot((p1.time, p2.time), (p1.position, p2.position), marker="o", c=color)
+
+        if with_trajectories:
+            # gap = self.default_state.density
+            slope = self.default_state.get_slope()
+
+            for pos in np.linspace(
+                -slope * max_time,
+                max_pos,
+                num_trajectories,
+            ):
+                cur = Trajectory(dtPoint(0, pos), slope)
+
+                while True:
+                    x = self._find_closest_intersection(cur)
+                    next_trajectory: Trajectory | None = None
+
+                    if x is not None:
+                        intersection, interface = x
+                        next_trajectory = Trajectory(
+                            intersection, interface.above.get_slope(), lower_bound=intersection
+                        )
+                        cur.add_cutoff(upper=intersection)
+
+                    p1 = cur.endpoints[0]
+                    p2 = cur.endpoints[1]
+
+                    if p2.time == float("inf"):
+                        p2 = dtPoint(
+                            max_time + 5,
+                            cur.get_pos_at_time(max_time + 5),
+                        )
+
+                    ax.plot(
+                        (p1.time, p2.time),
+                        (p1.position, p2.position),
+                        c="grey",
+                        alpha=0.5,
+                    )
+
+                    if next_trajectory is not None:
+                        cur = next_trajectory
+                    else:
+                        break
+
+        ax.set_xbound(0, max_time)
+        ax.set_ybound(0, max_pos)
+
         plt.close(fig)
+
+        return (fig, ax)
+
+    def create_figure_px(self, with_trajectories=False, num_trajectories: int = 100):
+        pass
