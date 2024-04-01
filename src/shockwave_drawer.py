@@ -536,6 +536,7 @@ class ShockwaveDrawer:
                         (p1.position, p2.position),
                         c="grey",
                         alpha=0.5,
+                        linewidth=0.5,
                     )
 
                     if next_trajectory is not None:
