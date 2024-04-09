@@ -8,7 +8,6 @@ from sortedcontainers import SortedList
 from src.augmenters.base_augmenter import TrafficAugmenter
 from src.custom_types import Axes, Figure
 
-from .augmenters.traffic_light import TrafficLight
 from .drawer_utils import (
     CapacityEvent,
     Event,
@@ -37,7 +36,7 @@ class ShockwaveDrawer:
         self,
         diagram: FundamentalDiagram,
         simulation_time: float,
-        augments: list[TrafficLight],
+        augments: list[TrafficAugmenter],
         init_density: float,
     ):
         """Constructor for a ShockwaveDrawer.
@@ -220,17 +219,14 @@ class ShockwaveDrawer:
         if not self.diagram.state_is_queued(below):
             posterior_capacity = min(posterior_capacity, below.flow)
 
-        # currently, if we have a capacity event with a prior/posterior capacity of 0, then we
-        # put it down as a latent event -- i.e., we postpone it for later,
-        # later being an IntersectionEvent in which the state is no longer empty
-        if float_isclose(posterior_capacity, 0) and float_isclose(prior_capacity, 0):
-            self.latent_events[cur.interface] = (cur.prior_capacity, cur.posterior_capacity)
-            return
-
         # if we have an increase in capacity and there is not enough density (queuing)
         # to take advantage of that increase, do nothing -- no interface created
-        if posterior_capacity >= prior_capacity and not self.diagram.state_is_queued(below):
-            pass
+        # this applies to 0 into 0 since posterior and prior both 0
+        if (
+            float_isclose(posterior_capacity, prior_capacity) or posterior_capacity > prior_capacity
+        ) and not self.diagram.state_is_queued(below):
+            self.latent_events[cur.interface] = (cur.prior_capacity, cur.posterior_capacity)
+            return
         # we have an actual event with a decrease in capacity
         else:
             # main interface of the event; direct result of the reduction in capacity
@@ -247,6 +243,18 @@ class ShockwaveDrawer:
                 )
 
                 self._add_interface(main_interface)
+
+                interface_slope = cur.interface.get_slope()
+
+                # this assumes that the interface are logically consistent -- for any time this
+                # interface setting may occur, the result would be identical
+                if float_isclose(main_interface.slope, interface_slope):
+                    # this means it is exactly the current interface slope -- invalid
+                    raise RuntimeError("An invalid interface was somehow created")
+                if main_interface.slope < interface_slope:
+                    cur.interface.below = main_interface.above
+                elif main_interface.slope > interface_slope:
+                    cur.interface.above = main_interface.below
 
             # the byproduct of the event -- for conservation of cars
             byproduct_interface_state = self.diagram.get_state_by_flow(
@@ -267,6 +275,14 @@ class ShockwaveDrawer:
                 )
 
                 self._add_interface(byproduct_interface)
+
+                if float_isclose(byproduct_interface.slope, interface_slope):
+                    # this means it is exactly the current interface slope -- invalid
+                    raise RuntimeError("An invalid interface was somehow created")
+                if byproduct_interface.slope < interface_slope:
+                    cur.interface.below = byproduct_interface.above
+                elif byproduct_interface.slope > interface_slope:
+                    cur.interface.above = byproduct_interface.below
 
     def _handle_intersection_event(self, cur: IntersectionEvent) -> None:
         """Handles an intersection event. Determines behavior purely using
@@ -516,6 +532,7 @@ class ShockwaveDrawer:
                     next_trajectory: Trajectory | None = None
 
                     if x is not None:
+                        print(interface.above)
                         intersection, interface = x
                         next_trajectory = Trajectory(
                             intersection, interface.above.get_slope(), lower_bound=intersection

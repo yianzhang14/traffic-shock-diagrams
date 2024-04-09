@@ -440,6 +440,12 @@ class Interface:  # boundary between two states
     def is_user_generated(self) -> bool:
         return False
 
+    def get_slope(self) -> float:
+        if self.endpoints[1].time == float("inf"):
+            raise AttributeError("Interface does not have well-defined endpoints")
+
+        return self.endpoints[0].get_slope(self.endpoints[1])
+
     # for now, define equality by the id/address of an object
 
     def __eq__(self, other: Interface) -> bool:
