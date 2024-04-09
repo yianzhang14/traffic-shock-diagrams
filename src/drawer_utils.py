@@ -416,6 +416,12 @@ class Interface:  # boundary between two states
         Returns:
             bool: whether or not the interfaces are functionally equivalent
         """
+        # if the two interfaces delineate different state combinations, they are not equivalent
+        if (other.below is not None and self.below is not None and other.below != self.below) or (
+            other.above is not None and self.above is not None and other.above != self.above
+        ):
+            return False
+
         # if the two interfaces are disjoint in terms of endpoints, they are not equivalent
         if (other.endpoints[1].time < self.endpoints[0].time) or (
             self.endpoints[1].time < other.endpoints[0].time
@@ -445,6 +451,9 @@ class Interface:  # boundary between two states
             raise AttributeError("Interface does not have well-defined endpoints")
 
         return self.endpoints[0].get_slope(self.endpoints[1])
+
+    def has_valid_states(self) -> bool:
+        return self.above is not None and self.below is not None
 
     # for now, define equality by the id/address of an object
 

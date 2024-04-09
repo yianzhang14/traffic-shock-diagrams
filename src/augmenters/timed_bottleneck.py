@@ -36,8 +36,8 @@ class TimedBottleneck(TrafficAugmenter):
         self.bottleneck_capacity = bottleneck_capacity
 
     @override
-    def init(self, simulation_time: float, events: SortedList, interfaces: list[Interface]):
-        if self.time_start >= 0 and self.time_end <= simulation_time:
+    def init(self, _simulation_time: float, events: SortedList, interfaces: list[Interface]):
+        if self.time_start >= 0:
             start = dtPoint(self.time_start, self.pos)
             end = dtPoint(self.time_end, self.pos)
 

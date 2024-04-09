@@ -2,6 +2,7 @@ from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
+import plotly.graph_objects as go
 import seaborn as sns
 from sortedcontainers import SortedList
 
@@ -173,6 +174,11 @@ class ShockwaveDrawer:
                 assert interface.is_user_generated()
                 continue
 
+            # edge case -- multiple things can be resolved at a single point
+            # maybe consider slopes too?
+            if float_isclose(interface.endpoints[1].time, point.time):
+                continue
+
             cur = interface.get_pos_at_time(point.time)
 
             if cur is None or float_isclose(point.position - cur, 0):
@@ -226,6 +232,7 @@ class ShockwaveDrawer:
             float_isclose(posterior_capacity, prior_capacity) or posterior_capacity > prior_capacity
         ) and not self.diagram.state_is_queued(below):
             self.latent_events[cur.interface] = (cur.prior_capacity, cur.posterior_capacity)
+            print(prior_capacity, posterior_capacity, below)
             return
         # we have an actual event with a decrease in capacity
         else:
@@ -428,7 +435,9 @@ class ShockwaveDrawer:
                 case EventType.intersection:
                     self._handle_intersection_event(cur)
 
-    def _find_closest_intersection(self, cur: Trajectory) -> Optional[tuple[dtPoint, Interface]]:
+    def _find_closest_intersection_traj(
+        self, cur: Trajectory
+    ) -> Optional[tuple[dtPoint, Interface]]:
         """This function is purely for generating trajectories. It finds the
         first intersection between a trajectory and generated interface to the right
         of the trajectory's left endpoint.
@@ -444,6 +453,12 @@ class ShockwaveDrawer:
         res: tuple[dtPoint, Interface] | None = None
 
         for interface in self.interfaces:
+            # ignore interfaces without valid states -- these
+            # weren't processed during the execution, meaning they don't
+            # (shouldn't) do anything
+            if not interface.has_valid_states():
+                continue
+
             # ignore unhandled user-generated interfaces (& possibly filled-in
             # non-user-generated ones, but those do not exist)
 
@@ -489,6 +504,11 @@ class ShockwaveDrawer:
             max_time = max(max_time, p1.time + PLOT_THRESHOLD_OFFSET)
 
         for interface in self.interfaces:
+            # don't draw interfaces without valid states -- if they don't
+            # have valid states, they weren't ever processed
+            if not interface.has_valid_states():
+                continue
+
             p1 = interface.endpoints[0]
             p2 = interface.endpoints[1]
 
@@ -528,11 +548,10 @@ class ShockwaveDrawer:
                 cur = Trajectory(dtPoint(0, pos), slope)
 
                 while True:
-                    x = self._find_closest_intersection(cur)
+                    x = self._find_closest_intersection_traj(cur)
                     next_trajectory: Trajectory | None = None
 
                     if x is not None:
-                        print(interface.above)
                         intersection, interface = x
                         next_trajectory = Trajectory(
                             intersection, interface.above.get_slope(), lower_bound=intersection
@@ -568,5 +587,162 @@ class ShockwaveDrawer:
 
         return (fig, ax)
 
-    def create_figure_px(self, with_trajectories=False, num_trajectories: int = 100):
-        pass
+    def create_legend(self) -> tuple[Figure, Axes]:
+        """This function creates a helpful visual legend for what interfaces represent
+        what state connection.
+
+        NOTE: create_figure_x should be called before this or else everything will be black--
+        the colors used reflect the ones generated in those functions
+
+        Returns:
+            tuple[Figure, Axes]: the legend
+        """
+        # note: this needs to be called after create_figure_x to generate the colors needed
+        # otherwise it will be all black
+        fig, ax = self.diagram.show()
+
+        for interface in self.interfaces:
+            if not interface.has_valid_states():
+                continue
+
+            above, below = interface.above, interface.below
+            ax.arrow(
+                below.density,
+                below.flow,
+                (above.density - below.density),
+                (above.flow - below.flow),
+                color=self.colors.get((above, below), "black"),
+                width=0.05,
+                alpha=0.5,
+            )
+
+        return fig, ax
+
+    def create_figure_px(self, with_trajectories=False, num_trajectories: int = 100) -> go.Figure:
+        """This function generates a plotly figure showing the fundamental digram,
+        using the currently generated interfaces stored in self.interfaces.
+
+        Trajectories can also be plotted, if specified.
+
+        Args:
+            with_trajectories (bool, optional): Whether or not to plot trajectories.
+            Defaults to False.
+
+        Returns:
+            tuple[Figure, Axes]: the figure and axes of the generated image
+        """
+
+        fig = go.Figure()
+        fig.layout.hovermode = "closest"
+        fig.layout.hoverdistance = -1  # ensures no "gaps" for selecting sparse data
+
+        color_space = sns.color_palette("tab10", int(len(self.interfaces) ** 0.5) + 10)
+        idx = 0
+
+        max_pos: float = -1
+        max_time: float = -1
+
+        for interface in self.interfaces:
+            p1 = interface.endpoints[0]
+
+            max_time = max(max_time, p1.time + PLOT_THRESHOLD_OFFSET)
+
+        for interface in self.interfaces:
+            # don't draw interfaces without valid states -- if they don't
+            # have valid states, they weren't ever processed
+            if not interface.has_valid_states():
+                continue
+
+            p1 = interface.endpoints[0]
+            p2 = interface.endpoints[1]
+
+            pos = interface.get_pos_at_time(max_time)
+
+            if p2.time == float("inf"):
+                max_pos = max(max_pos, pos)
+                p2 = dtPoint(
+                    max_time,
+                    pos,
+                )
+
+            color = "black"
+
+            if not interface.is_user_generated():
+                tup: tuple[State, State] = (interface.above, interface.below)
+
+                if tup in self.colors:
+                    color = self.colors[tup]
+                else:
+                    color = color_space[idx]
+                    idx += 1
+                    self.colors[tup] = color
+
+            if p1 != p2:
+                fig.add_trace(
+                    go.Scatter(
+                        x=(p1.time, p2.time),
+                        y=(p1.position, p2.position),
+                        line=dict(color=(color if isinstance(color, str) else f"rgb{color}")),
+                        mode="markers+lines",
+                        hoverinfo="x+y",  # Show custom hover text
+                    ),
+                )
+
+        if with_trajectories:
+            # gap = self.default_state.density
+            slope = self.default_state.get_slope()
+
+            for pos in np.linspace(
+                -slope * max_time,
+                max_pos,
+                num_trajectories,
+            ):
+                cur = Trajectory(dtPoint(0, pos), slope)
+
+                while True:
+                    x = self._find_closest_intersection_traj(cur)
+                    next_trajectory: Trajectory | None = None
+
+                    if x is not None:
+                        intersection, interface = x
+                        next_trajectory = Trajectory(
+                            intersection, interface.above.get_slope(), lower_bound=intersection
+                        )
+                        cur.add_cutoff(upper=intersection)
+
+                    p1 = cur.endpoints[0]
+                    p2 = cur.endpoints[1]
+
+                    if p2.time == float("inf"):
+                        p2 = dtPoint(
+                            max_time + PLOT_THRESHOLD_OFFSET,
+                            cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET),
+                        )
+
+                    fig.add_trace(
+                        go.Scatter(
+                            x=(p1.time, p2.time),
+                            y=(p1.position, p2.position),
+                            line=dict(color="grey", width=0.5),
+                            opacity=0.5,
+                            showlegend=False,
+                            hoverinfo="none",
+                            mode="lines",
+                        )
+                    )
+
+                    if next_trajectory is not None:
+                        cur = next_trajectory
+                    else:
+                        break
+
+        fig.update_layout(
+            xaxis=dict(range=[0, max_time]),
+            yaxis=dict(range=[0, max_pos]),
+            plot_bgcolor="white",
+            autosize=False,
+            width=1200,
+            height=600,
+        )
+
+        return fig
