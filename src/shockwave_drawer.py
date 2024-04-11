@@ -202,9 +202,6 @@ class ShockwaveDrawer:
         using the prior/posterior capacity (adjusted for the current state)
         and the fundamental diagram.
 
-        TODO: determine whether we need to store latent capacity information (see the `pass` below)
-        TODO: set the event interface above/below states at the end -- should do this
-
         Args:
             cur (CapacityEvent): The capacity event to handle
             above (State): the state above the point of the capacity event
