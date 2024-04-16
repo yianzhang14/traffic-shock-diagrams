@@ -444,6 +444,8 @@ class ShockwaveDrawer:
 
         # if the current interface is a latent event, we process it as such
         if cur.user_interface in self.latent_events:
+            if cur.user_interface.has_endpoint(cur.point):
+                return
             # extract prior/post capacity to inform the capacity event
             prior_cap, post_cap = self.latent_events.pop(cur.user_interface)
             print("converting to capacity event")
@@ -630,7 +632,9 @@ class ShockwaveDrawer:
         for interface in self.interfaces:
             p1 = interface.endpoints[0]
 
-            max_time = max(max_time, p1.time + PLOT_THRESHOLD_OFFSET)
+            max_time = max(max_time, p1.time)
+
+        max_time = max(max_time, self.simulation_time) + PLOT_THRESHOLD_OFFSET
 
         for interface in self.interfaces:
             # don't draw interfaces without valid states -- if they don't
@@ -736,7 +740,7 @@ class ShockwaveDrawer:
         except Exception as e:
             print(e)
 
-        return max_pos, max_time, min(min_pos, 0)
+        return max_pos, max_time, min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
 
     def create_legend(self) -> tuple[Figure, Axes]:
         """This function creates a helpful visual legend for what interfaces represent
@@ -953,6 +957,8 @@ class ShockwaveDrawer:
                 seen.add((stack[i], stack[i + 1]))
             seen.add((stack[-1], stack[0]))
 
+            if len(stack) <= 2:
+                continue
             polygon = shp.Polygon([(x.time, x.position) for x in stack])
 
             if not float_isclose(
