@@ -1,4 +1,3 @@
-import copy
 from typing import Callable, Optional
 
 import matplotlib.pyplot as plt
@@ -90,8 +89,6 @@ class ShockwaveDrawer:
         for augment in self.augments:
             augment.init(self.simulation_time, self.events, self.interfaces)
 
-        self.user_interfaces: list[Interface] = copy.deepcopy(self.interfaces)
-
         self.colors: dict[tuple[State, State], np.ndarray] = dict()
 
     def _add_interface(self, interface: Interface):
@@ -137,9 +134,17 @@ class ShockwaveDrawer:
                     min_intersect = intersect
                     min_interfaces = [x]
 
-        # add the interface in question to the list since that is part of the event
+        # add the interface in question to the list since that is part of the  event
         min_interfaces.append(interface)
         min_truncation_interfaces.append(interface)
+
+        if min_truncation:
+            truncation_event = TruncationEvent(
+                min_truncation, min_truncation_interfaces[0], min_truncation_interfaces[1:]
+            )
+            self.events.add(truncation_event)
+
+            interface.truncation_event = truncation_event
 
         # if we have an interesct, generate an IntersectionEvent between these two interfaces
         if min_intersect:
@@ -148,6 +153,7 @@ class ShockwaveDrawer:
             # at existing interfaces (i think -- should check)
             if min_intersect in self.intersections:
                 event: IntersectionEvent = self.intersections.get(min_intersect)
+
                 for interface in min_interfaces:
                     if interface not in event.interfaces:
                         event.interfaces.append(interface)
@@ -156,13 +162,6 @@ class ShockwaveDrawer:
                 event = IntersectionEvent(min_intersect, min_interfaces)
                 self.events.add(event)
                 self.intersections[min_intersect] = event
-
-        if min_truncation:
-            self.events.add(
-                TruncationEvent(
-                    min_truncation, min_truncation_interfaces[0], min_truncation_interfaces[1:]
-                )
-            )
 
         # add the interface to the list
         self.interfaces.append(interface)
@@ -337,12 +336,17 @@ class ShockwaveDrawer:
         # so need to remove the interfaces that would not longer be cutoff here
         interfaces: list[Interface] = []
 
+        truncation_events: list[TruncationEvent] = []
+
         for interface in cur.interfaces:
             assert not interface.is_user_generated()
 
             if interface.get_pos_at_time(cur.point.time) is None:
                 continue
             interfaces.append(interface)
+
+            if interface.truncation_event:
+                truncation_events.append(interface.truncation_event)
 
         # don't do anything if there is nothing else to do
         if len(interfaces) <= 1:
@@ -383,7 +387,6 @@ class ShockwaveDrawer:
 
         # don't create new interface if there is no actual change in state
         # see three intersection for an example
-        print(above, below)
         if above != below:
             # creat the new interface using the found above/below states
             # goes outwards from this current point to higher times
@@ -396,6 +399,23 @@ class ShockwaveDrawer:
             )
 
             self._add_interface(new_interface)
+
+        for event in truncation_events:
+            print(event)
+            if event.right_truncated:
+                print(cur.point, event.user_interface.endpoints)
+                below_state = self._resolve_state(cur.point)
+                self._add_interface(
+                    Interface(
+                        cur.point,
+                        below_state.get_slope(),
+                        below,
+                        below_state,
+                        lower_bound=cur.point,
+                        upper_bound=event.user_interface.original_upper_bound,
+                    )
+                )
+                break
 
     def _handle_truncation_event(self, cur: TruncationEvent) -> None:
         interfaces: list[Interface] = []
@@ -449,6 +469,7 @@ class ShockwaveDrawer:
                 cur.user_interface.add_cutoff(lower=cur.point)
         else:
             cur.user_interface.add_cutoff(upper=cur.point)
+            cur.right_truncated = True
 
         return
 
@@ -584,16 +605,6 @@ class ShockwaveDrawer:
         max_time: float = -1
         min_pos = float("inf")
 
-        for interface in self.user_interfaces:
-            line_plotter(
-                interface.endpoints[0],
-                interface.endpoints[1],
-                alpha=0.5,
-                dotted=False,
-                dashed=True,
-                color="black",
-            )
-
         for interface in self.interfaces:
             p1 = interface.endpoints[0]
 
@@ -636,6 +647,17 @@ class ShockwaveDrawer:
 
             if p1 != p2:
                 line_plotter(p1, p2, dotted=True, color=color)
+
+            if interface.is_user_generated():
+                x: UserInterface = interface
+                line_plotter(
+                    x.original_lower_bound,
+                    x.original_upper_bound,
+                    alpha=0.5,
+                    dotted=False,
+                    dashed=True,
+                    color="black",
+                )
 
         try:
             if with_trajectories:

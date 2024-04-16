@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import math
 from abc import ABC
 from dataclasses import dataclass, field
@@ -145,7 +146,11 @@ class IntersectionEvent(Event):
 
     interfaces: list[Interface]
 
-    def __init__(self, point: dtPoint, interfaces: list[Interface]):
+    def __init__(
+        self,
+        point: dtPoint,
+        interfaces: list[Interface],
+    ):
         """IntersectionEvent constructor.
 
         Args:
@@ -205,8 +210,9 @@ class CapacityEvent(Event):
 
 @dataclass
 class TruncationEvent(Event):
-    user_interface: Interface
+    user_interface: UserInterface
     interfaces: list[Interface]
+    right_truncated: bool = False
 
     def __init__(self, point: dtPoint, user_interface: Interface, interfaces: list):
         super().__init__(point, EventType.truncation, 3)
@@ -309,6 +315,8 @@ class Interface:  # boundary between two states
 
         self.above = above
         self.below = below
+
+        self.truncation_event: Optional[TruncationEvent] = None
 
     def __str__(self) -> str:
         return f"Interface({self.point}, {self.slope})"
@@ -503,6 +511,8 @@ class UserInterface(Interface):
         super().__init__(point, slope, None, None, lower_bound=lower_bound, upper_bound=upper_bound)
 
         self.augment = augment
+        self.original_lower_bound = copy.deepcopy(lower_bound)
+        self.original_upper_bound = copy.deepcopy(upper_bound)
 
     @override
     def is_user_generated(self) -> bool:
