@@ -140,10 +140,10 @@ class Event(ABC):
             return False
 
         if float_isclose(self.point.time, other.point.time):
-            if self.priority == other.priority:
-                return self.point.position < other.point.position
+            if float_isclose(self.point.position, other.point.position):
+                return self.priority < other.priority
 
-            return self.priority < other.priority
+            return self.point.position < other.point.position
 
         return self.point.time < other.point.time
 
@@ -223,7 +223,7 @@ class TruncationEvent(Event):
     right_truncated: bool = False
 
     def __init__(self, point: dtPoint, user_interface: UserInterface, interfaces: list):
-        super().__init__(point, EventType.truncation, 2)
+        super().__init__(point, EventType.truncation, 1)
 
         self.interfaces = interfaces
         self.user_interface = user_interface
@@ -537,8 +537,8 @@ class UserInterface(Interface):
         point: dtPoint,
         slope: float,
         augment: CapacityBottleneck,
-        lower_bound: Optional[dtPoint] = None,
-        upper_bound: Optional[dtPoint] = None,
+        lower_bound: dtPoint,
+        upper_bound: dtPoint,
     ):
         super().__init__(point, slope, None, None, lower_bound=lower_bound, upper_bound=upper_bound)
 

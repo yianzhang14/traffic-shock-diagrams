@@ -36,8 +36,8 @@ class LineBottleneck(CapacityBottleneck):
                 self.start,
                 self.start.get_slope(self.end),
                 self,
-                lower_bound=self.start,
-                upper_bound=self.end,
+                self.start,
+                self.end,
             )
             interfaces.append(cur)
 

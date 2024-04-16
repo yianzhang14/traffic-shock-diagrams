@@ -70,7 +70,7 @@ class TrafficLight(CapacityBottleneck):
                 start = dtPoint(time, self.pos)
                 end = dtPoint(time + self.cycles[state], self.pos)
 
-                cur = UserInterface(start, 0, self, lower_bound=start, upper_bound=end)
+                cur = UserInterface(start, 0, self, start, end)
                 interfaces.append(cur)
 
                 start_event = CapacityEvent(start, cur, posterior_capacity=0)

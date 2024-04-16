@@ -215,7 +215,23 @@ class ShockwaveDrawer:
 
             cur = interface.get_pos_at_time(point.time)
 
-            if cur is None or float_isclose(point.position - cur, 0):
+            if cur is None:
+                continue
+
+            if float_isclose(point.position, cur):
+                if interface.endpoints[1] != point:
+                    if float_isclose(interface.slope, 0):
+                        continue
+
+                    if below and interface.slope < 0:
+                        if min_dist != 0 or (res and interface.slope > res.slope):
+                            res = interface
+                            min_dist = 0
+                    elif not below and interface.slope > 0:
+                        if min_dist != 0 or (res and interface.slope < res.slope):
+                            res = interface
+                            min_dist = 0
+
                 continue
 
             if res and float_isclose(scale * (point.position - cur), min_dist):
@@ -256,6 +272,7 @@ class ShockwaveDrawer:
         """
         if cur.interface.get_pos_at_time(cur.point.time) is None:
             return False
+
         above = self._resolve_state(cur.point, below=False)
         below = self._resolve_state(cur.point, below=True)
 
@@ -280,6 +297,7 @@ class ShockwaveDrawer:
         # if we have an increase in capacity and there is not enough density (queuing)
         # to take advantage of that increase, do nothing -- no interface created
         # this applies to 0 into 0 since posterior and prior both 0
+        print(prior_capacity, posterior_capacity, above, below)
         if (
             posterior_capacity > prior_capacity or float_isclose(posterior_capacity, prior_capacity)
         ) and not self.diagram.state_is_queued(below):
@@ -335,6 +353,8 @@ class ShockwaveDrawer:
                         cur.interface.set_above_state(main_interface.below)
 
                 state_created |= True
+
+                print(main_interface)
             else:
                 cur.interface.set_below_state(below)
 
@@ -377,12 +397,16 @@ class ShockwaveDrawer:
                         cur.interface.set_above_state(byproduct_interface.below)
 
                 state_created |= True
+
+                print(byproduct_interface)
             else:
                 cur.interface.set_above_state(above)
 
+            print(main_interface_state, byproduct_interface_state)
+
             return state_created
 
-    def _handle_intersection_event(self, cur: IntersectionEvent, fiat: bool = False) -> bool:
+    def _handle_intersection_event(self, cur: IntersectionEvent, force: bool = False) -> bool:
         """Handles an intersection event. Determines behavior purely using
         the intersecting interfaces in question and basic dt-diagram
         resolutions.
@@ -395,7 +419,7 @@ class ShockwaveDrawer:
         assert len(cur.interfaces) >= 2
 
         # remove the intersectionevent from the dictionary
-        if not fiat:
+        if not force:
             self.intersections.pop(cur.point)
 
         # resolve the actual interfaces at question -- during execution, may have invalidated some
@@ -405,7 +429,7 @@ class ShockwaveDrawer:
         truncation_events: list[TruncationEvent] = []
 
         for interface in cur.interfaces:
-            assert fiat or not interface.is_user_generated()
+            assert force or not interface.is_user_generated()
 
             if interface.get_pos_at_time(cur.point.time) is None:
                 continue
@@ -491,15 +515,6 @@ class ShockwaveDrawer:
         if len(interfaces) == 0:
             return
 
-        for interface in interfaces:
-            if interface == cur.user_interface:
-                continue
-
-            interface.add_cutoff(upper=cur.point)
-
-        if cur.user_interface.has_endpoint(cur.point):
-            return
-
         # if the current interface is a latent event, we process it as such
         if cur.user_interface in self.latent_events:
             # extract prior/post capacity to inform the capacity event
@@ -518,17 +533,31 @@ class ShockwaveDrawer:
                 )
             )
 
-        elif cur.user_interface.has_valid_states():
+            if state_created:
+                for interface in interfaces:
+                    if interface == cur.user_interface:
+                        continue
+
+                    interface.add_cutoff(upper=cur.point)
+
+            return
+
+        for interface in interfaces:
+            if interface == cur.user_interface:
+                continue
+
+            interface.add_cutoff(upper=cur.point)
+
+        if cur.user_interface.has_valid_states():
             print("handling right truncation event")
 
-            # self.latent_events[cur.user_interface] = (-1, cur.user_interface.augment.bottleneck)
-            # new_interface = copy.deepcopy(cur.user_interface)
-            # self.interfaces.append(new_interface)
-            # new_interface.add_cutoff(upper=cur.point)
-            # cur.user_interface.add_cutoff(lower=cur.point)
+            self.latent_events[cur.user_interface] = (-1, cur.user_interface.augment.bottleneck)
+            new_interface = copy.deepcopy(cur.user_interface)
+            self.interfaces.append(new_interface)
+            cur.user_interface.add_cutoff(lower=cur.point)
 
             state_created = self._handle_intersection_event(
-                IntersectionEvent(cur.point, [cur.user_interface] + cur.interfaces), fiat=True
+                IntersectionEvent(cur.point, [new_interface] + cur.interfaces), force=True
             )
 
             if state_created:
@@ -537,7 +566,7 @@ class ShockwaveDrawer:
 
                 cur.user_interface.add_cutoff(upper=cur.point)
 
-    def run(self) -> None:
+    def run(self, save_images=False) -> None:
         """Main function to generate the shockwave diagram given the inputs."""
 
         self.i = 0
@@ -554,6 +583,8 @@ class ShockwaveDrawer:
             if cur.disabled:
                 continue
 
+            x = len(self.interfaces)
+
             print(f"processing {cur}")
 
             # handle the vent based on its type
@@ -564,6 +595,12 @@ class ShockwaveDrawer:
                     self._handle_intersection_event(cast(IntersectionEvent, cur))
                 case EventType.truncation:
                     self._handle_truncation_event(cast(TruncationEvent, cur))
+
+            if save_images and len(self.interfaces) != x:
+                fig, ax = self.create_figure_plt(with_trajectories=True)
+                fig.savefig(f"data/{self.i}.png")
+
+                self.i += 1
 
     # plotting utilities vvv
 
@@ -1078,63 +1115,68 @@ class ShockwaveDrawer:
         polygons: list[shp.Polygon] = []
 
         seen: set[tuple[dtPoint, dtPoint]] = set()
-        for point in graph.keys():
-            stack: collections.deque[dtPoint] = collections.deque([point])
+        for _ in range(2):
+            for point in graph.keys():
+                stack: collections.deque[dtPoint] = collections.deque([point])
 
-            cur = None
-            for neighbor in graph[point]:
-                if (point, neighbor) not in seen:
-                    cur = neighbor
-                    break
+                cur = None
+                for neighbor in graph[point]:
+                    if (point, neighbor) not in seen:
+                        cur = neighbor
+                        break
 
-            if cur is None:
-                continue
+                if cur is None:
+                    continue
 
-            while cur:
-                stack.append(cur)
+                while cur:
+                    stack.append(cur)
 
-                prev_vec = np.array([cur.time - stack[-2].time, cur.position - stack[-2].position])
-
-                max_angle: float = -1
-                next_point: dtPoint | None = None
-
-                for neighbor in graph[cur]:
-                    vec = -1 * np.array(
-                        [neighbor.time - cur.time, neighbor.position - cur.position]
+                    prev_vec = np.array(
+                        [cur.time - stack[-2].time, cur.position - stack[-2].position]
                     )
 
-                    if float_isclose(cast(float, np.linalg.norm(prev_vec)), 0) or float_isclose(
-                        cast(float, np.linalg.norm(vec)), 0
-                    ):
-                        continue
+                    max_angle: float = -1
+                    next_point: dtPoint | None = None
 
-                    expr = np.dot(prev_vec, vec) / np.linalg.norm(prev_vec) / np.linalg.norm(vec)
-                    angle: float = np.degrees(np.arccos(np.clip(expr, -1, 1)))
+                    for neighbor in graph[cur]:
+                        vec = -1 * np.array(
+                            [neighbor.time - cur.time, neighbor.position - cur.position]
+                        )
 
-                    sign: float = np.sign(prev_vec[0] * vec[1] - prev_vec[1] * vec[0])
+                        if float_isclose(cast(float, np.linalg.norm(prev_vec)), 0) or float_isclose(
+                            cast(float, np.linalg.norm(vec)), 0
+                        ):
+                            continue
 
-                    if sign < 0:
-                        angle = 360 - angle
+                        expr = (
+                            np.dot(prev_vec, vec) / np.linalg.norm(prev_vec) / np.linalg.norm(vec)
+                        )
+                        angle: float = np.degrees(np.arccos(np.clip(expr, -1, 1)))
 
-                    if angle > max_angle:
-                        max_angle = angle
-                        next_point = neighbor
+                        sign: float = np.sign(prev_vec[0] * vec[1] - prev_vec[1] * vec[0])
 
-                if next_point is None or next_point == point:
-                    break
-                cur = next_point
+                        if sign < 0:
+                            angle = 360 - angle
 
-            for i in range(len(stack) - 1):
-                seen.add((stack[i], stack[i + 1]))
-            seen.add((stack[-1], stack[0]))
+                        if angle > max_angle:
+                            max_angle = angle
+                            next_point = neighbor
 
-            if len(stack) <= 2:
-                continue
-            polygon = Polygon([(x.time, x.position) for x in stack])
+                    if next_point is None or next_point == point:
+                        break
+                    cur = next_point
 
-            if not float_isclose(
-                polygon.area, (max_time - min_time) * (max_position - min_position)
-            ):
-                polygons.append(polygon)
+                for i in range(len(stack) - 1):
+                    seen.add((stack[i], stack[i + 1]))
+                seen.add((stack[-1], stack[0]))
+
+                if len(stack) <= 2:
+                    continue
+                polygon = Polygon([(x.time, x.position) for x in stack])
+
+                if not float_isclose(
+                    polygon.area, (max_time - min_time) * (max_position - min_position)
+                ):
+                    polygons.append(polygon)
 
         return polygons
