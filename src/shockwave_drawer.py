@@ -1,3 +1,4 @@
+import copy
 from typing import Callable, Optional
 
 import matplotlib.pyplot as plt
@@ -88,6 +89,8 @@ class ShockwaveDrawer:
         # initialize the augments -- add their events to the event queue
         for augment in self.augments:
             augment.init(self.simulation_time, self.events, self.interfaces)
+
+        self.user_interfaces: list[Interface] = copy.deepcopy(self.interfaces)
 
         self.colors: dict[tuple[State, State], np.ndarray] = dict()
 
@@ -501,6 +504,7 @@ class ShockwaveDrawer:
             color=None,
             alpha: Optional[float] = None,
             linewidth: Optional[float] = None,
+            dashed=False,
         ):
             kwargs = {}
             if dotted:
@@ -512,6 +516,8 @@ class ShockwaveDrawer:
                 kwargs["alpha"] = alpha
             if linewidth:
                 kwargs["linewidth"] = linewidth
+            if dashed:
+                kwargs["linestyle"] = "dashed"
 
             ax.plot((p1.time, p2.time), (p1.position, p2.position), **kwargs)
 
@@ -535,6 +541,11 @@ class ShockwaveDrawer:
         max_pos: float = -1
         max_time: float = -1
         min_pos = float("inf")
+
+        for interface in self.user_interfaces:
+            line_plotter(
+                interface.endpoints[0], interface.endpoints[1], alpha=0.5, dotted=False, dashed=True
+            )
 
         for interface in self.interfaces:
             p1 = interface.endpoints[0]
@@ -589,7 +600,7 @@ class ShockwaveDrawer:
                     max_pos,
                     num_trajectories,
                 ):
-                    cur = Trajectory(dtPoint(0, pos), slope)
+                    cur = Trajectory(dtPoint(0, pos + 0.1), slope)
 
                     while True:
                         x = self._find_closest_intersection_traj(cur)
@@ -692,6 +703,7 @@ class ShockwaveDrawer:
             color=None,
             alpha: Optional[float] = None,
             linewidth: Optional[float] = None,
+            dashed=False,
         ):
             kwargs = {}
             kwargs["line"] = {}
@@ -708,6 +720,8 @@ class ShockwaveDrawer:
 
             if linewidth:
                 kwargs["line"]["width"] = linewidth
+            if dashed:
+                kwargs["line"]["dash"] = "dash"
 
             fig.add_trace(
                 go.Scatter(
