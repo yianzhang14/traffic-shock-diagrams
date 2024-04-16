@@ -159,7 +159,6 @@ class FundamentalDiagram:
         if not flip and (
             (flow > prev_state.flow and left_density > prev_state.density)
             or (flow < prev_state.flow and left_density < prev_state.density)
-            or self.state_is_queued(prev_state)
         ):
             return State(right_density, flow)
 
