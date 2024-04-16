@@ -1,12 +1,13 @@
 import collections
 from typing import Any, Callable, Optional, cast
 
+import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go  # type: ignore
 import seaborn as sns  # type: ignore
-import shapely.geometry as shp  # type: ignore
-from matplotlib.patches import Polygon
+import shapely as shp  # type: ignore
+from shapely.geometry import Polygon  # type: ignore
 from sortedcontainers import SortedList  # type: ignore
 
 from src.augmenters.base_augmenter import TrafficAugmenter
@@ -89,7 +90,9 @@ class ShockwaveDrawer:
         for augment in self.augments:
             augment.init(self.simulation_time, self.events, self.interfaces)
 
-        self.colors: dict[tuple[State, State], np.ndarray] = dict()
+        self.colors: dict[tuple[State, State], tuple] = dict()
+
+        self.states: set[State] = set()
 
     def _add_interface(self, interface: Interface):
         """Private function to add an interface to the list of generated interfaces.
@@ -598,7 +601,7 @@ class ShockwaveDrawer:
 
             ax.plot((p1.time, p2.time), (p1.position, p2.position), **kwargs)
 
-        def polygon_plotter(polygon: shp.Polygon, color=None, alpha: Optional[float] = None):
+        def polygon_plotter(polygon: Polygon, color=None, alpha: Optional[float] = None):
             kwargs = {}
 
             if alpha:
@@ -607,14 +610,14 @@ class ShockwaveDrawer:
             if color:
                 kwargs["color"] = color
 
-            ax.add_patch(Polygon(polygon.exterior.coords, closed=True, **kwargs))
+            ax.add_patch(patches.Polygon(polygon.exterior.coords, closed=True, **kwargs))
 
         max_pos, max_time, min_pos = self._create_figure(
             line_plotter, polygon_plotter, num_trajectories, with_trajectories, with_polygons
         )
 
         ax.set_xbound(-PLOT_THRESHOLD_OFFSET, max_time)
-        ax.set_ybound(min_pos - PLOT_THRESHOLD_OFFSET, max_pos)
+        ax.set_ybound(min_pos, max_pos)
 
         plt.close(fig)
 
@@ -651,22 +654,22 @@ class ShockwaveDrawer:
             p1 = interface.endpoints[0]
             p2 = interface.endpoints[1]
 
-            pos = interface.get_pos_at_time(max_time)
-            assert pos is not None
-
             min_pos = min(min_pos, p1.position)
 
             if p2.time != float("inf"):
                 min_pos = min(min_pos, p2.position)
 
             if p2.time == float("inf"):
+                pos = interface.get_pos_at_time(max_time)
+                assert pos is not None
+
                 max_pos = max(max_pos, pos)
                 p2 = dtPoint(
                     max_time,
                     pos,
                 )
 
-            color: str | np.ndarray = "black"
+            color: str | tuple = "black"
 
             if not interface.is_user_generated():
                 assert interface.above and interface.below
@@ -677,7 +680,7 @@ class ShockwaveDrawer:
                 else:
                     color = color_space[idx]
                     idx += 1
-                    assert isinstance(color, np.ndarray)
+                    assert isinstance(color, tuple)
                     self.colors[tup] = color
 
             if p1 != p2:
@@ -753,21 +756,48 @@ class ShockwaveDrawer:
         except Exception as e:
             print(e)
 
+        min_pos = min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
+
         if with_polygons:
-            polygons = self._resolve_polygons(max_time, max_pos, min_pos - PLOT_THRESHOLD_OFFSET)
+            polygons = self._resolve_polygons(max_time, max_pos, min_pos)
 
-            color_space = sns.color_palette("tab20", len(polygons))
+            state_color_space = sns.color_palette("Spectral_r", as_cmap=True)
 
-            for i, polygon in enumerate(polygons):
+            idx = 0
+
+            for polygon in polygons:
+                midpoint: shp.Point = shp.centroid(polygon)
+                above = self._resolve_state(dtPoint(midpoint.x, midpoint.y))
+
+                self.states.add(above)
+
                 polygon_plotter(
                     polygon,
-                    color=color_space[i],
-                    alpha=0.2,
+                    color=state_color_space(above.density / self.diagram.jam_density),
+                    alpha=0.5,
                 )
 
-        return max_pos, max_time, min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
+        return (max_pos, max_time, min_pos)
 
-    def create_legend(self) -> tuple[Figure, Axes]:
+    def create_state_legend(self) -> tuple[Figure, Axes]:
+        fig, ax = self.diagram.show()
+        color_space = sns.color_palette("Spectral_r", as_cmap=True)
+
+        for state in self.states:
+            ax.scatter(
+                state.density,
+                state.flow,
+                color=color_space(state.density / self.diagram.jam_density),
+                s=50,
+                alpha=1,
+                zorder=2,
+            )
+
+        plt.close(fig)
+
+        return fig, ax
+
+    def create_interface_legend(self) -> tuple[Figure, Axes]:
         """This function creates a helpful visual legend for what interfaces represent
         what state connection.
 
@@ -797,6 +827,8 @@ class ShockwaveDrawer:
                 width=0.05,
                 alpha=0.5,
             )
+
+        plt.close(fig)
 
         return fig, ax
 
@@ -865,7 +897,7 @@ class ShockwaveDrawer:
 
         fig.update_layout(
             xaxis=dict(range=[0, max_time]),
-            yaxis=dict(range=[min_pos - PLOT_THRESHOLD_OFFSET, max_pos]),
+            yaxis=dict(range=[min_pos, max_pos]),
             plot_bgcolor="white",
             autosize=False,
             width=1200,
@@ -889,6 +921,8 @@ class ShockwaveDrawer:
         top_left = dtPoint(min_time, max_position)
         bottom_right = dtPoint(max_time, min_position)
         top_right = dtPoint(max_time, max_position)
+
+        print(bottom_left, bottom_right)
 
         segments: SortedList[tuple[float, dtPoint]] = SortedList(key=lambda x: x[0])
         segments.add((min_position, bottom_right))
@@ -991,7 +1025,7 @@ class ShockwaveDrawer:
 
             if len(stack) <= 2:
                 continue
-            polygon = shp.Polygon([(x.time, x.position) for x in stack])
+            polygon = Polygon([(x.time, x.position) for x in stack])
 
             if not float_isclose(
                 polygon.area, (max_time - min_time) * (max_position - min_position)
