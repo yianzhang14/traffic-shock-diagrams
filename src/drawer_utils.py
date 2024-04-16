@@ -334,6 +334,18 @@ class Interface:  # boundary between two states
 
         self.truncation_event: Optional[TruncationEvent] = None
 
+    def set_above_state(self, state: State) -> None:
+        if self.above:
+            assert self.above == state
+        else:
+            self.above = state
+
+    def set_below_state(self, state: State) -> None:
+        if self.below:
+            assert self.below == state
+        else:
+            self.below = state
+
     def __str__(self) -> str:
         return f"Interface({self.point}, {self.slope})"
 

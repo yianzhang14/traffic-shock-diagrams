@@ -1,6 +1,8 @@
 import collections
 from typing import Any, Callable, Optional, cast
 
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
@@ -223,6 +225,7 @@ class ShockwaveDrawer:
 
         # return the found state or default state if none found
         if res:
+            print(res.above, res.below, res)
             assert res.above and res.below
             if below:
                 return res.above
@@ -293,10 +296,19 @@ class ShockwaveDrawer:
                 if float_isclose(main_interface.slope, interface_slope):
                     # this means it is exactly the current interface slope -- invalid
                     raise RuntimeError("An invalid interface was somehow created")
-                if main_interface.slope < interface_slope:
-                    cur.interface.below = main_interface.above
-                elif main_interface.slope > interface_slope:
-                    cur.interface.above = main_interface.below
+
+                assert main_interface.above and main_interface.below
+
+                if cur.interface.get_pos_at_time(cur.point.time + EPS) is None:
+                    if main_interface.slope < interface_slope:
+                        cur.interface.set_below_state(main_interface.below)
+                    elif main_interface.slope > interface_slope:
+                        cur.interface.set_above_state(main_interface.above)
+                else:
+                    if main_interface.slope < interface_slope:
+                        cur.interface.set_below_state(main_interface.above)
+                    elif main_interface.slope > interface_slope:
+                        cur.interface.set_above_state(main_interface.below)
 
                 state_created |= True
 
@@ -323,10 +335,19 @@ class ShockwaveDrawer:
                 if float_isclose(byproduct_interface.slope, interface_slope):
                     # this means it is exactly the current interface slope -- invalid
                     raise RuntimeError("An invalid interface was somehow created")
-                if byproduct_interface.slope < interface_slope:
-                    cur.interface.below = byproduct_interface.above
-                elif byproduct_interface.slope > interface_slope:
-                    cur.interface.above = byproduct_interface.below
+
+                assert byproduct_interface.below and byproduct_interface.above
+
+                if cur.interface.get_pos_at_time(cur.point.time + EPS) is None:
+                    if byproduct_interface.slope < interface_slope:
+                        cur.interface.set_below_state(byproduct_interface.below)
+                    elif byproduct_interface.slope > interface_slope:
+                        cur.interface.set_above_state(byproduct_interface.above)
+                else:
+                    if byproduct_interface.slope < interface_slope:
+                        cur.interface.set_below_state(byproduct_interface.above)
+                    elif byproduct_interface.slope > interface_slope:
+                        cur.interface.set_above_state(byproduct_interface.below)
 
                 state_created |= True
 
@@ -405,6 +426,7 @@ class ShockwaveDrawer:
         if above != below:
             # creat the new interface using the found above/below states
             # goes outwards from this current point to higher times
+            print(above, below, cur.point)
             new_interface = Interface(
                 cur.point,
                 self.diagram.get_interface_slope(above.density, below.density),
@@ -449,6 +471,8 @@ class ShockwaveDrawer:
         # (the converse where the user-generated interface hit an empty state is impossible
         # since it would've made an interface below it that would hit the empty state instead)
         # in this case, we need some custom logic to handle things
+
+        print("actual truncation event")
 
         # if the current interface is a latent event, we process it as such
         if cur.user_interface in self.latent_events:
@@ -612,12 +636,25 @@ class ShockwaveDrawer:
 
             ax.add_patch(patches.Polygon(polygon.exterior.coords, closed=True, **kwargs))
 
+        def add_colorbar(colorbar):
+            fig.colorbar(colorbar, ax=ax, label="Density gradient")
+
         max_pos, max_time, min_pos = self._create_figure(
-            line_plotter, polygon_plotter, num_trajectories, with_trajectories, with_polygons
+            line_plotter,
+            polygon_plotter,
+            num_trajectories,
+            with_trajectories,
+            with_polygons,
+            "plt",
+            add_colorbar=add_colorbar,
         )
 
         ax.set_xbound(-PLOT_THRESHOLD_OFFSET, max_time)
         ax.set_ybound(min_pos, max_pos)
+
+        ax.set_title("Shockwave Diagram")
+        ax.set_xlabel("Time (seconds)")
+        ax.set_ylabel("Position (meters)")
 
         plt.close(fig)
 
@@ -630,6 +667,8 @@ class ShockwaveDrawer:
         num_trajectories: int,
         with_trajectories: bool,
         with_polygons: bool,
+        backbone: str,
+        add_colorbar: Optional[Callable] = None,
     ) -> tuple[float, float, float]:
         color_space = sns.color_palette("tab20", int(len(self.interfaces) ** 0.5) + 10)
         idx = 0
@@ -697,7 +736,7 @@ class ShockwaveDrawer:
                 )
 
         try:
-            if with_trajectories:
+            if with_trajectories and backbone == "plt":
                 # gap = self.default_state.density
                 slope = self.default_state.get_slope()
 
@@ -767,15 +806,24 @@ class ShockwaveDrawer:
 
             for polygon in polygons:
                 midpoint: shp.Point = shp.centroid(polygon)
-                above = self._resolve_state(dtPoint(midpoint.x, midpoint.y))
+                below = self._resolve_state(dtPoint(midpoint.x, midpoint.y))
 
-                self.states.add(above)
+                print(polygon, below, midpoint)
+
+                normalizer = mcolors.Normalize(vmin=0, vmax=self.diagram.jam_density)
+
+                self.states.add(below)
 
                 polygon_plotter(
                     polygon,
-                    color=state_color_space(above.density / self.diagram.jam_density),
+                    color=state_color_space(normalizer(below.density)),
                     alpha=0.5,
                 )
+
+            scalarmappable = cm.ScalarMappable(norm=normalizer, cmap=state_color_space)
+            scalarmappable.set_array([state.density for state in self.states])
+            assert add_colorbar
+            add_colorbar(scalarmappable)
 
         return (max_pos, max_time, min_pos)
 
@@ -892,7 +940,7 @@ class ShockwaveDrawer:
             pass
 
         max_pos, max_time, min_pos = self._create_figure(
-            line_plotter, polygon_plotter, num_trajectories, with_trajectories, with_polygons
+            line_plotter, polygon_plotter, num_trajectories, with_trajectories, with_polygons, "px"
         )
 
         fig.update_layout(
