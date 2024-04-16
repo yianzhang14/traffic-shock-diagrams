@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Callable, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,6 +10,7 @@ from src.augmenters.base_augmenter import TrafficAugmenter
 from src.custom_types import Axes, Figure
 
 from .drawer_utils import (
+    ABS_TOL,
     CapacityEvent,
     Event,
     EventType,
@@ -26,6 +27,7 @@ from .fundamental_diagram import FundamentalDiagram
 # from .state_handler import StateHandler
 
 PLOT_THRESHOLD_OFFSET = 5
+EPS = 1e-4
 
 
 class ShockwaveDrawer:
@@ -174,17 +176,12 @@ class ShockwaveDrawer:
                 assert interface.is_user_generated()
                 continue
 
-            # edge case -- multiple things can be resolved at a single point
-            # maybe consider slopes too?
-            if float_isclose(interface.endpoints[1].time, point.time):
-                continue
-
-            cur = interface.get_pos_at_time(point.time)
+            cur = interface.get_pos_at_time(point.time + EPS)
 
             if cur is None or float_isclose(point.position - cur, 0):
                 continue
 
-            if scale * (point.position - cur) >= 0 and scale * (point.position - cur) < min_dist:
+            if scale * (point.position - cur) >= 0 and (scale * (point.position - cur) < min_dist):
                 res = interface
 
                 min_dist = scale * (point.position - cur)
@@ -210,6 +207,10 @@ class ShockwaveDrawer:
         above = self._resolve_state(cur.point, below=False)
         below = self._resolve_state(cur.point, below=True)
 
+        # fig, ax = self.create_figure_plt(with_trajectories=True)
+        # fig.savefig(f"data/log_{self.i}.png")
+        # self.i += 1
+
         # get prior/posterior capacity
         prior_capacity = below.flow if cur.prior_capacity == -1 else cur.prior_capacity
         posterior_capacity = (
@@ -225,9 +226,9 @@ class ShockwaveDrawer:
         # if we have an increase in capacity and there is not enough density (queuing)
         # to take advantage of that increase, do nothing -- no interface created
         # this applies to 0 into 0 since posterior and prior both 0
-        if (
-            float_isclose(posterior_capacity, prior_capacity) or posterior_capacity > prior_capacity
-        ) and not self.diagram.state_is_queued(below):
+        if (posterior_capacity > prior_capacity + ABS_TOL) and not self.diagram.state_is_queued(
+            below
+        ):
             self.latent_events[cur.interface] = (cur.prior_capacity, cur.posterior_capacity)
             print(prior_capacity, posterior_capacity, below)
             return
@@ -287,6 +288,8 @@ class ShockwaveDrawer:
                     cur.interface.below = byproduct_interface.above
                 elif byproduct_interface.slope > interface_slope:
                     cur.interface.above = byproduct_interface.below
+
+            print(main_interface_state, byproduct_interface_state)
 
     def _handle_intersection_event(self, cur: IntersectionEvent) -> None:
         """Handles an intersection event. Determines behavior purely using
@@ -411,6 +414,8 @@ class ShockwaveDrawer:
     def run(self):
         """Main function to generate the shockwave diagram given the inputs."""
 
+        self.i = 0
+
         # setup required data structures
         self._setup()
 
@@ -489,11 +494,47 @@ class ShockwaveDrawer:
         fig, ax = plt.subplots(figsize=(20, 10))
         ax: Axes
 
+        def line_plotter(
+            p1: dtPoint,
+            p2: dtPoint,
+            dotted=False,
+            color=None,
+            alpha: Optional[float] = None,
+            linewidth: Optional[float] = None,
+        ):
+            kwargs = {}
+            if dotted:
+                kwargs["marker"] = "o"
+            if color:
+                kwargs["c"] = color
+
+            if alpha:
+                kwargs["alpha"] = alpha
+            if linewidth:
+                kwargs["linewidth"] = linewidth
+
+            ax.plot((p1.time, p2.time), (p1.position, p2.position), **kwargs)
+
+        max_pos, max_time, min_pos = self._create_figure(
+            line_plotter, num_trajectories, with_trajectories
+        )
+
+        ax.set_xbound(0, max_time)
+        ax.set_ybound(min_pos - PLOT_THRESHOLD_OFFSET, max_pos)
+
+        plt.close(fig)
+
+        return (fig, ax)
+
+    def _create_figure(
+        self, line_plotter: Callable, num_trajectories: int, with_trajectories: bool
+    ) -> tuple[float, float, float]:
         color_space = sns.color_palette("tab10", int(len(self.interfaces) ** 0.5) + 10)
         idx = 0
 
         max_pos: float = -1
         max_time: float = -1
+        min_pos = float("inf")
 
         for interface in self.interfaces:
             p1 = interface.endpoints[0]
@@ -510,6 +551,11 @@ class ShockwaveDrawer:
             p2 = interface.endpoints[1]
 
             pos = interface.get_pos_at_time(max_time)
+
+            min_pos = min(min_pos, p1.position)
+
+            if p2.time != float("inf"):
+                min_pos = min(min_pos, p2.position)
 
             if p2.time == float("inf"):
                 max_pos = max(max_pos, pos)
@@ -531,58 +577,64 @@ class ShockwaveDrawer:
                     self.colors[tup] = color
 
             if p1 != p2:
-                ax.plot((p1.time, p2.time), (p1.position, p2.position), marker="o", c=color)
+                line_plotter(p1, p2, dotted=True, color=color)
 
-        if with_trajectories:
-            # gap = self.default_state.density
-            slope = self.default_state.get_slope()
+        try:
+            if with_trajectories:
+                # gap = self.default_state.density
+                slope = self.default_state.get_slope()
 
-            for pos in np.linspace(
-                -slope * max_time,
-                max_pos,
-                num_trajectories,
-            ):
-                cur = Trajectory(dtPoint(0, pos), slope)
+                for pos in np.linspace(
+                    -slope * max_time,
+                    max_pos,
+                    num_trajectories,
+                ):
+                    cur = Trajectory(dtPoint(0, pos), slope)
 
-                while True:
-                    x = self._find_closest_intersection_traj(cur)
-                    next_trajectory: Trajectory | None = None
+                    while True:
+                        x = self._find_closest_intersection_traj(cur)
+                        next_trajectory: Trajectory | None = None
 
-                    if x is not None:
-                        intersection, interface = x
-                        next_trajectory = Trajectory(
-                            intersection, interface.above.get_slope(), lower_bound=intersection
+                        if x is not None:
+                            intersection, interface = x
+                            next_trajectory = Trajectory(
+                                intersection, interface.above.get_slope(), lower_bound=intersection
+                            )
+
+                            # if we have a slope of inf (iff density of state is 0), just
+                            # kill the trajectory -- this occurs if we have an trajectory intersect
+                            # exactly at the point of an interface
+                            if next_trajectory.slope == float("inf"):
+                                break
+
+                            cur.add_cutoff(upper=intersection)
+
+                        p1 = cur.endpoints[0]
+                        p2 = cur.endpoints[1]
+
+                        if p2.time == float("inf"):
+                            p2 = dtPoint(
+                                max_time + PLOT_THRESHOLD_OFFSET,
+                                cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET),
+                            )
+
+                        line_plotter(
+                            p1,
+                            p2,
+                            dotted=False,
+                            color="grey",
+                            alpha=0.5,
+                            linewidth=0.5,
                         )
-                        cur.add_cutoff(upper=intersection)
 
-                    p1 = cur.endpoints[0]
-                    p2 = cur.endpoints[1]
+                        if next_trajectory is not None:
+                            cur = next_trajectory
+                        else:
+                            break
+        except Exception as e:
+            print(e)
 
-                    if p2.time == float("inf"):
-                        p2 = dtPoint(
-                            max_time + PLOT_THRESHOLD_OFFSET,
-                            cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET),
-                        )
-
-                    ax.plot(
-                        (p1.time, p2.time),
-                        (p1.position, p2.position),
-                        c="grey",
-                        alpha=0.5,
-                        linewidth=0.5,
-                    )
-
-                    if next_trajectory is not None:
-                        cur = next_trajectory
-                    else:
-                        break
-
-        ax.set_xbound(0, max_time)
-        ax.set_ybound(0, max_pos)
-
-        plt.close(fig)
-
-        return (fig, ax)
+        return max_pos, max_time, min_pos
 
     def create_legend(self) -> tuple[Figure, Axes]:
         """This function creates a helpful visual legend for what interfaces represent
@@ -633,109 +685,46 @@ class ShockwaveDrawer:
         fig.layout.hovermode = "closest"
         fig.layout.hoverdistance = -1  # ensures no "gaps" for selecting sparse data
 
-        color_space = sns.color_palette("tab10", int(len(self.interfaces) ** 0.5) + 10)
-        idx = 0
+        def line_plotter(
+            p1: dtPoint,
+            p2: dtPoint,
+            dotted=False,
+            color=None,
+            alpha: Optional[float] = None,
+            linewidth: Optional[float] = None,
+        ):
+            kwargs = {}
+            kwargs["line"] = {}
 
-        max_pos: float = -1
-        max_time: float = -1
+            if color:
+                kwargs["line"]["color"] = color if isinstance(color, str) else f"rgb{color}"
 
-        for interface in self.interfaces:
-            p1 = interface.endpoints[0]
+            if alpha:
+                kwargs["opacity"] = alpha
 
-            max_time = max(max_time, p1.time + PLOT_THRESHOLD_OFFSET)
+            kwargs["mode"] = "lines"
+            if dotted:
+                kwargs["mode"] = "markers+lines"
 
-        for interface in self.interfaces:
-            # don't draw interfaces without valid states -- if they don't
-            # have valid states, they weren't ever processed
-            if not interface.has_valid_states():
-                continue
+            if linewidth:
+                kwargs["line"]["width"] = linewidth
 
-            p1 = interface.endpoints[0]
-            p2 = interface.endpoints[1]
+            fig.add_trace(
+                go.Scatter(
+                    x=(p1.time, p2.time),
+                    y=(p1.position, p2.position),
+                    hoverinfo="x+y",  # Show custom hover text
+                    **kwargs,
+                ),
+            )
 
-            pos = interface.get_pos_at_time(max_time)
-
-            if p2.time == float("inf"):
-                max_pos = max(max_pos, pos)
-                p2 = dtPoint(
-                    max_time,
-                    pos,
-                )
-
-            color = "black"
-
-            if not interface.is_user_generated():
-                tup: tuple[State, State] = (interface.above, interface.below)
-
-                if tup in self.colors:
-                    color = self.colors[tup]
-                else:
-                    color = color_space[idx]
-                    idx += 1
-                    self.colors[tup] = color
-
-            if p1 != p2:
-                fig.add_trace(
-                    go.Scatter(
-                        x=(p1.time, p2.time),
-                        y=(p1.position, p2.position),
-                        line=dict(color=(color if isinstance(color, str) else f"rgb{color}")),
-                        mode="markers+lines",
-                        hoverinfo="x+y",  # Show custom hover text
-                    ),
-                )
-
-        if with_trajectories:
-            # gap = self.default_state.density
-            slope = self.default_state.get_slope()
-
-            for pos in np.linspace(
-                -slope * max_time,
-                max_pos,
-                num_trajectories,
-            ):
-                cur = Trajectory(dtPoint(0, pos), slope)
-
-                while True:
-                    x = self._find_closest_intersection_traj(cur)
-                    next_trajectory: Trajectory | None = None
-
-                    if x is not None:
-                        intersection, interface = x
-                        next_trajectory = Trajectory(
-                            intersection, interface.above.get_slope(), lower_bound=intersection
-                        )
-                        cur.add_cutoff(upper=intersection)
-
-                    p1 = cur.endpoints[0]
-                    p2 = cur.endpoints[1]
-
-                    if p2.time == float("inf"):
-                        p2 = dtPoint(
-                            max_time + PLOT_THRESHOLD_OFFSET,
-                            cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET),
-                        )
-
-                    fig.add_trace(
-                        go.Scatter(
-                            x=(p1.time, p2.time),
-                            y=(p1.position, p2.position),
-                            line=dict(color="grey", width=0.5),
-                            opacity=0.5,
-                            showlegend=False,
-                            hoverinfo="none",
-                            mode="lines",
-                        )
-                    )
-
-                    if next_trajectory is not None:
-                        cur = next_trajectory
-                    else:
-                        break
+        max_pos, max_time, min_pos = self._create_figure(
+            line_plotter, num_trajectories, with_trajectories
+        )
 
         fig.update_layout(
             xaxis=dict(range=[0, max_time]),
-            yaxis=dict(range=[0, max_pos]),
+            yaxis=dict(range=[min_pos - PLOT_THRESHOLD_OFFSET, max_pos]),
             plot_bgcolor="white",
             autosize=False,
             width=1200,

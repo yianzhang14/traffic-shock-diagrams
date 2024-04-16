@@ -230,6 +230,9 @@ class State:
         return (self.flow - other.flow) / (self.density - other.density)
 
     def get_slope(self) -> float:
+        if self.density == 0:
+            return float("inf")
+
         return self.flow / self.density
 
     def __eq__(self, other: State) -> bool:
