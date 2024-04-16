@@ -223,7 +223,7 @@ class TruncationEvent(Event):
     right_truncated: bool = False
 
     def __init__(self, point: dtPoint, user_interface: UserInterface, interfaces: list):
-        super().__init__(point, EventType.truncation, 1)
+        super().__init__(point, EventType.truncation, 2)
 
         self.interfaces = interfaces
         self.user_interface = user_interface
@@ -349,7 +349,7 @@ class Interface:  # boundary between two states
             self.below = state
 
     def __str__(self) -> str:
-        return f"Interface({self.point}, {self.slope})"
+        return f"Interface({self.point}, {self.slope}, {self.endpoints})"
 
     def has_endpoint(self, point: dtPoint) -> bool:
         """Function to determine whether an interface contains a given point

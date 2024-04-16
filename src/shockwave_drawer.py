@@ -215,11 +215,16 @@ class ShockwaveDrawer:
 
             cur = interface.get_pos_at_time(point.time)
 
-            if cur is None or float_isclose(point.position, cur):
+            if cur is None or float_isclose(point.position - cur, 0):
                 continue
 
             if res and float_isclose(scale * (point.position - cur), min_dist):
-                if (below and interface.slope > res.slope) or (
+                if interface.endpoints[1] == dtPoint(point.time, cur):
+                    if (below and interface.slope < res.slope) or (
+                        not below and interface.slope > res.slope
+                    ):
+                        res = interface
+                elif (below and interface.slope > res.slope) or (
                     not below and interface.slope < res.slope
                 ):
                     res = interface
@@ -275,20 +280,20 @@ class ShockwaveDrawer:
         # if we have an increase in capacity and there is not enough density (queuing)
         # to take advantage of that increase, do nothing -- no interface created
         # this applies to 0 into 0 since posterior and prior both 0
-        print(prior_capacity, posterior_capacity, above, below)
         if (
             posterior_capacity > prior_capacity or float_isclose(posterior_capacity, prior_capacity)
         ) and not self.diagram.state_is_queued(below):
             self.latent_events[cur.interface] = (cur.prior_capacity, cur.posterior_capacity)
-            self._add_interface(
-                Interface(
-                    cur.point,
-                    self.diagram.get_interface_slope(above.density, below.density),
-                    above,
-                    below,
-                    lower_bound=cur.point,
+            if not float_isclose(above.density, below.density):
+                self._add_interface(
+                    Interface(
+                        cur.point,
+                        self.diagram.get_interface_slope(above.density, below.density),
+                        above,
+                        below,
+                        lower_bound=cur.point,
+                    )
                 )
-            )
             return False
         # we have an actual event with a decrease in capacity
         else:
@@ -374,8 +379,6 @@ class ShockwaveDrawer:
                 state_created |= True
             else:
                 cur.interface.set_above_state(above)
-
-            print(main_interface_state, byproduct_interface_state)
 
             return state_created
 
@@ -494,10 +497,11 @@ class ShockwaveDrawer:
 
             interface.add_cutoff(upper=cur.point)
 
+        if cur.user_interface.has_endpoint(cur.point):
+            return
+
         # if the current interface is a latent event, we process it as such
         if cur.user_interface in self.latent_events:
-            if cur.user_interface.has_endpoint(cur.point):
-                return
             # extract prior/post capacity to inform the capacity event
             prior_cap, post_cap = self.latent_events.pop(cur.user_interface)
             print("converting to capacity event")
@@ -771,7 +775,7 @@ class ShockwaveDrawer:
             if p1 != p2:
                 line_plotter(p1, p2, dotted=True, color=color)
 
-        if with_trajectories and backbone == "plt":
+        if with_trajectories:
             # gap = self.default_state.density
             slope = self.default_state.get_slope()
 
@@ -831,7 +835,7 @@ class ShockwaveDrawer:
 
         min_pos = min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
 
-        if with_polygons:
+        if with_polygons and backbone == "plt":
             line = LineString(
                 [(-10 * PLOT_THRESHOLD_OFFSET, max_interface_pos), (max_time, max_interface_pos)]
             )
@@ -850,6 +854,7 @@ class ShockwaveDrawer:
                         midpoint = piece_center
 
                 below = self._resolve_state(dtPoint(midpoint.x, midpoint.y))
+                print(midpoint, below)
 
                 normalizer = mcolors.TwoSlopeNorm(
                     self.diagram.capacity_density, vmin=0, vmax=self.diagram.jam_density
@@ -1004,7 +1009,7 @@ class ShockwaveDrawer:
         )
 
         fig.update_layout(
-            xaxis=dict(range=[0, max_time]),
+            xaxis=dict(range=[-PLOT_THRESHOLD_OFFSET, max_time]),
             yaxis=dict(range=[min_pos, max_pos]),
             plot_bgcolor="white",
             autosize=False,
