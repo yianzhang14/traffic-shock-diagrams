@@ -1,9 +1,13 @@
-from typing import Callable, Optional
+import collections
+import math
+from typing import Callable, Optional, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
 import seaborn as sns
+import shapely.geometry as shp
+from matplotlib.patches import Polygon
 from sortedcontainers import SortedList
 
 from src.augmenters.base_augmenter import TrafficAugmenter
@@ -197,7 +201,7 @@ class ShockwaveDrawer:
                 assert interface.is_user_generated()
                 continue
 
-            cur = interface.get_pos_at_time(point.time + EPS)
+            cur = interface.get_pos_at_time(point.time)
 
             if cur is None or float_isclose(point.position - cur, 0):
                 continue
@@ -465,11 +469,13 @@ class ShockwaveDrawer:
                 # optional: truncate the user-generated interface to actually
                 # start where it is supposed to (where there is flow to manipulate)
                 cur.user_interface.add_cutoff(lower=cur.point)
-        else:
+        elif cur.user_interface.has_valid_states():
+            print("handling right truncation event")
             cur.user_interface.add_cutoff(upper=cur.point)
             cur.right_truncated = True
-
-        return
+        else:
+            for interface in interfaces:
+                interface.add_cutoff(upper=cur.point)
 
     def run(self):
         """Main function to generate the shockwave diagram given the inputs."""
@@ -540,7 +546,7 @@ class ShockwaveDrawer:
         return res
 
     def create_figure_plt(
-        self, with_trajectories=False, num_trajectories: int = 100
+        self, with_trajectories=False, num_trajectories: int = 100, with_polygons=False
     ) -> tuple[Figure, Axes]:
         """This function generates a matplotlib figure showing the fundamental digram,
         using the currently generated interfaces stored in self.interfaces.
@@ -588,6 +594,21 @@ class ShockwaveDrawer:
 
         ax.set_xbound(0, max_time)
         ax.set_ybound(min_pos - PLOT_THRESHOLD_OFFSET, max_pos)
+
+        if with_polygons:
+            polygons = self._resolve_polygons(max_time, max_pos, min_pos - PLOT_THRESHOLD_OFFSET)
+
+            color_space = sns.color_palette("rainbow", len(polygons))
+
+            for i, polygon in enumerate(polygons):
+                ax.add_patch(
+                    Polygon(
+                        polygon.exterior.coords,
+                        closed=True,
+                        alpha=0.3,
+                        color=color_space[i],
+                    )
+                )
 
         plt.close(fig)
 
@@ -647,11 +668,10 @@ class ShockwaveDrawer:
                 line_plotter(p1, p2, dotted=True, color=color)
 
             if interface.is_user_generated():
-                x: UserInterface = interface
                 line_plotter(
-                    x.original_lower_bound,
-                    x.original_upper_bound,
-                    alpha=0.5,
+                    cast(UserInterface, interface).original_lower_bound,
+                    cast(UserInterface, interface).original_upper_bound,
+                    alpha=0.9,
                     dotted=False,
                     dashed=True,
                     color="black",
@@ -702,7 +722,7 @@ class ShockwaveDrawer:
                             p2,
                             dotted=False,
                             color="grey",
-                            alpha=0.5,
+                            alpha=0.8,
                             linewidth=0.5,
                         )
 
@@ -814,3 +834,121 @@ class ShockwaveDrawer:
         )
 
         return fig
+
+    def _resolve_polygons(
+        self, max_time: float, max_position: float, min_position: float
+    ) -> list[Polygon]:
+        self.polygons = []
+
+        graph: collections.defaultdict[dtPoint, set[dtPoint]] = collections.defaultdict(
+            lambda: set()
+        )
+
+        bottom_left = dtPoint(0, min_position)
+        top_left = dtPoint(0, max_position)
+        bottom_right = dtPoint(max_time, min_position)
+        top_right = dtPoint(max_time, max_position)
+
+        segments: SortedList[tuple[float, dtPoint]] = SortedList(key=lambda x: x[0])
+        segments.add((min_position, bottom_right))
+        segments.add((max_position, top_right))
+
+        for interface in self.interfaces:
+            if not interface.has_valid_states():
+                continue
+
+            x, y = interface.endpoints
+
+            if y.time == float("inf"):
+                y = dtPoint(max_time, interface.get_pos_at_time(max_time))
+
+            if y != top_right and float_isclose(max_time, y.time):
+                segments.add((y.position, y))
+
+            graph[x].add(y)
+            graph[y].add(x)
+
+            for neighbor in graph[x]:
+                graph[neighbor].add(x)
+
+            for neighbor in graph[y]:
+                graph[neighbor].add(y)
+
+        graph[bottom_left].add(top_left)
+        graph[bottom_left].add(bottom_right)
+        graph[top_left].add(top_right)
+        graph[top_left].add(bottom_left)
+        graph[bottom_right].add(bottom_left)
+        graph[top_right].add(top_left)
+
+        for i in range(len(segments) - 1):
+            _, below = segments[i]
+            _, above = segments[i + 1]
+            graph[below].add(above)
+            graph[above].add(below)
+
+        polygons: list[shp.Polygon] = []
+
+        seen: set[tuple[dtPoint, dtPoint]] = set()
+        for point in graph.keys():
+            if (
+                float_isclose(point.time, 0)
+                or float_isclose(point.position, max_position)
+                or float_isclose(point.position, min_position)
+            ):
+                continue
+            stack: collections.deque[dtPoint] = collections.deque([point])
+
+            cur = None
+            for neighbor in graph[point]:
+                if (point, neighbor) not in seen:
+                    cur = neighbor
+                    break
+
+            if cur is None:
+                continue
+
+            while cur:
+                stack.append(cur)
+
+                prev_vec = np.array([cur.time - stack[-2].time, cur.position - stack[-2].position])
+
+                max_angle: float = -1
+                next_point: dtPoint | None = None
+
+                for neighbor in graph[cur]:
+                    vec = -1 * np.array(
+                        [neighbor.time - cur.time, neighbor.position - cur.position]
+                    )
+
+                    if float_isclose(np.linalg.norm(prev_vec), 0) or float_isclose(
+                        np.linalg.norm(vec), 0
+                    ):
+                        continue
+
+                    expr = np.dot(prev_vec, vec) / np.linalg.norm(prev_vec) / np.linalg.norm(vec)
+                    angle: float = np.degrees(np.arccos(np.clip(expr, -1, 1)))
+
+                    sign: float = np.sign(prev_vec[0] * vec[1] - prev_vec[1] * vec[0])
+
+                    if sign < 0:
+                        angle = 360 - angle
+
+                    if angle > max_angle:
+                        max_angle = angle
+                        next_point = neighbor
+
+                if next_point == point:
+                    break
+                cur = next_point
+
+            for i in range(len(stack) - 1):
+                seen.add((stack[i], stack[i + 1]))
+            seen.add((stack[-1], stack[0]))
+
+            polygon = shp.Polygon([(x.time, x.position) for x in stack])
+
+            if not float_isclose(polygon.area, max_time * (max_position - min_position)):
+                polygons.append(polygon)
+
+        return polygons
