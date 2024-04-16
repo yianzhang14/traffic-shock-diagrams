@@ -821,54 +821,57 @@ class ShockwaveDrawer:
                 max_pos,
                 num_trajectories,
             ):
-                assert isinstance(pos, float)
-                cur = Trajectory(dtPoint(0, pos + 0.1), slope)
+                try:
+                    assert isinstance(pos, float)
+                    cur = Trajectory(dtPoint(0, pos + 0.1), slope)
 
-                while True:
-                    x = self._find_closest_intersection_traj(cur)
-                    next_trajectory: Trajectory | None = None
+                    while True:
+                        x = self._find_closest_intersection_traj(cur)
+                        next_trajectory: Trajectory | None = None
 
-                    if x is not None:
-                        intersection, interface = x
-                        assert interface.above
+                        if x is not None:
+                            intersection, interface = x
+                            assert interface.above
 
-                        next_trajectory = Trajectory(
-                            intersection, interface.above.get_slope(), lower_bound=intersection
+                            next_trajectory = Trajectory(
+                                intersection, interface.above.get_slope(), lower_bound=intersection
+                            )
+
+                            # if we have a slope of inf (iff density of state is 0), just
+                            # kill the trajectory -- this occurs if we have an trajectory intersect
+                            # exactly at the point of an interface
+                            if next_trajectory.slope == float("inf"):
+                                break
+
+                            cur.add_cutoff(upper=intersection)
+
+                        p1 = cur.endpoints[0]
+                        p2 = cur.endpoints[1]
+
+                        if p2.time == float("inf"):
+                            p2_pos = cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET)
+                            if p2_pos is None:
+                                break
+                            p2 = dtPoint(
+                                max_time + PLOT_THRESHOLD_OFFSET,
+                                p2_pos,
+                            )
+
+                        line_plotter(
+                            p1,
+                            p2,
+                            dotted=False,
+                            color="grey",
+                            alpha=0.8,
+                            linewidth=0.5,
                         )
 
-                        # if we have a slope of inf (iff density of state is 0), just
-                        # kill the trajectory -- this occurs if we have an trajectory intersect
-                        # exactly at the point of an interface
-                        if next_trajectory.slope == float("inf"):
+                        if next_trajectory is not None:
+                            cur = next_trajectory
+                        else:
                             break
-
-                        cur.add_cutoff(upper=intersection)
-
-                    p1 = cur.endpoints[0]
-                    p2 = cur.endpoints[1]
-
-                    if p2.time == float("inf"):
-                        p2_pos = cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET)
-                        if p2_pos is None:
-                            break
-                        p2 = dtPoint(
-                            max_time + PLOT_THRESHOLD_OFFSET,
-                            p2_pos,
-                        )
-
-                    line_plotter(
-                        p1,
-                        p2,
-                        dotted=False,
-                        color="grey",
-                        alpha=0.8,
-                        linewidth=0.5,
-                    )
-
-                    if next_trajectory is not None:
-                        cur = next_trajectory
-                    else:
-                        break
+                except Exception as e:
+                    print(e)
 
         min_pos = min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
 
