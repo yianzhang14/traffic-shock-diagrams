@@ -713,7 +713,7 @@ class ShockwaveDrawer:
         except Exception as e:
             print(e)
 
-        return max_pos, max_time, min_pos if min_pos != float("inf") else 0
+        return max_pos, max_time, min(min_pos, 0)
 
     def create_legend(self) -> tuple[Figure, Axes]:
         """This function creates a helpful visual legend for what interfaces represent
