@@ -142,7 +142,7 @@ class Event(ABC):
 
         if float_isclose(self.point.time, other.point.time):
             if self.priority == other.priority:
-                return self.point.position > other.point.position
+                return self.point.position < other.point.position
 
             return self.priority < other.priority
 
@@ -336,6 +336,7 @@ class Interface:  # boundary between two states
 
     def set_above_state(self, state: State) -> None:
         if self.above:
+            print(self.above, state)
             assert self.above == state
         else:
             self.above = state

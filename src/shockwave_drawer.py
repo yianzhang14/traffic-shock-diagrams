@@ -1,4 +1,5 @@
 import collections
+import dataclasses
 from typing import Any, Callable, Optional, cast
 
 import matplotlib.cm as cm
@@ -94,7 +95,13 @@ class ShockwaveDrawer:
 
         self.colors: dict[tuple[State, State], tuple] = dict()
 
-        self.states: set[State] = set()
+        self.state_names: dict[State, str] = dict()
+        self.state_names[self.diagram.get_empty_state()] = "E"
+        self.state_names[self.diagram.get_max_state()] = "M"
+        self.state_names[self.diagram.get_jam_state()] = "J"
+        self.state_names[self.default_state] = "A"
+
+        self.idx1 = self.idx2 = 0
 
     def _add_interface(self, interface: Interface):
         """Private function to add an interface to the list of generated interfaces.
@@ -183,8 +190,7 @@ class ShockwaveDrawer:
         above state of the closest interface. Same idea for getting the above state
 
         OPTIMIZE: make this more efficient with segment trees
-        TODO: handle user-generated interfaces more elegantly -- currently allow
-        user-generated interfaces to be considered, as long as they have an above/below state
+        TODO: figure out how to best handle cases where the resolved state is at an endpoint
 
         Args:
             point (dtPoint): the point to resolve the state for
@@ -225,7 +231,6 @@ class ShockwaveDrawer:
 
         # return the found state or default state if none found
         if res:
-            print(res.above, res.below, res)
             assert res.above and res.below
             if below:
                 return res.above
@@ -426,7 +431,6 @@ class ShockwaveDrawer:
         if above != below:
             # creat the new interface using the found above/below states
             # goes outwards from this current point to higher times
-            print(above, below, cur.point)
             new_interface = Interface(
                 cur.point,
                 self.diagram.get_interface_slope(above.density, below.density),
@@ -639,6 +643,14 @@ class ShockwaveDrawer:
         def add_colorbar(colorbar):
             fig.colorbar(colorbar, ax=ax, label="Density gradient")
 
+        def add_annotation(text: str, point: dtPoint):
+            ax.annotate(
+                text,
+                xy=dataclasses.astuple(point),
+                horizontalalignment="center",
+                verticalalignment="center",
+            )
+
         max_pos, max_time, min_pos = self._create_figure(
             line_plotter,
             polygon_plotter,
@@ -647,6 +659,7 @@ class ShockwaveDrawer:
             with_polygons,
             "plt",
             add_colorbar=add_colorbar,
+            add_annotation=add_annotation,
         )
 
         ax.set_xbound(-PLOT_THRESHOLD_OFFSET, max_time)
@@ -669,9 +682,9 @@ class ShockwaveDrawer:
         with_polygons: bool,
         backbone: str,
         add_colorbar: Optional[Callable] = None,
+        add_annotation: Optional[Callable] = None,
     ) -> tuple[float, float, float]:
         color_space = sns.color_palette("tab20", int(len(self.interfaces) ** 0.5) + 10)
-        idx = 0
 
         max_pos: float = -1
         max_time: float = -1
@@ -717,8 +730,8 @@ class ShockwaveDrawer:
                 if tup in self.colors:
                     color = self.colors[tup]
                 else:
-                    color = color_space[idx]
-                    idx += 1
+                    color = color_space[self.idx1]
+                    self.idx1 += 1
                     assert isinstance(color, tuple)
                     self.colors[tup] = color
 
@@ -801,18 +814,24 @@ class ShockwaveDrawer:
             polygons = self._resolve_polygons(max_time, max_pos, min_pos)
 
             state_color_space = sns.color_palette("Spectral_r", as_cmap=True)
-
-            idx = 0
+            assert add_colorbar and add_annotation
 
             for polygon in polygons:
                 midpoint: shp.Point = shp.centroid(polygon)
                 below = self._resolve_state(dtPoint(midpoint.x, midpoint.y))
 
-                print(polygon, below, midpoint)
-
                 normalizer = mcolors.Normalize(vmin=0, vmax=self.diagram.jam_density)
 
-                self.states.add(below)
+                label = chr(ord("A") + self.idx2)
+                while label in self.state_names.values():
+                    self.idx2 += 1
+                    label = chr(ord("A") + self.idx2)
+
+                if below in self.state_names:
+                    label = self.state_names[below]
+                else:
+                    self.idx2 += 1
+                    self.state_names[below] = label
 
                 polygon_plotter(
                     polygon,
@@ -820,9 +839,11 @@ class ShockwaveDrawer:
                     alpha=0.5,
                 )
 
+                add_annotation(label, dtPoint(midpoint.x, midpoint.y))
+
             scalarmappable = cm.ScalarMappable(norm=normalizer, cmap=state_color_space)
-            scalarmappable.set_array([state.density for state in self.states])
-            assert add_colorbar
+            scalarmappable.set_array([state.density for state in self.state_names.keys()])
+
             add_colorbar(scalarmappable)
 
         return (max_pos, max_time, min_pos)
@@ -831,7 +852,7 @@ class ShockwaveDrawer:
         fig, ax = self.diagram.show()
         color_space = sns.color_palette("Spectral_r", as_cmap=True)
 
-        for state in self.states:
+        for state in self.state_names.keys():
             ax.scatter(
                 state.density,
                 state.flow,
@@ -839,6 +860,12 @@ class ShockwaveDrawer:
                 s=50,
                 alpha=1,
                 zorder=2,
+            )
+            ax.annotate(
+                self.state_names[state],
+                xy=(state.density + 0.15, state.flow),
+                horizontalalignment="center",
+                verticalalignment="center",
             )
 
         plt.close(fig)
@@ -969,8 +996,6 @@ class ShockwaveDrawer:
         top_left = dtPoint(min_time, max_position)
         bottom_right = dtPoint(max_time, min_position)
         top_right = dtPoint(max_time, max_position)
-
-        print(bottom_left, bottom_right)
 
         segments: SortedList[tuple[float, dtPoint]] = SortedList(key=lambda x: x[0])
         segments.add((min_position, bottom_right))
