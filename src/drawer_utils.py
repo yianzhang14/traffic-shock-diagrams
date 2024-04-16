@@ -19,6 +19,8 @@ import shapely as shp
 
 DIGIT_TOLERANCE = 4
 ABS_TOL = 1e-4
+PLOT_THRESHOLD_OFFSET = 1
+EPS = 1e-4
 
 
 def float_isclose(x: float, y: float) -> bool:
@@ -133,7 +135,7 @@ class Event(ABC):
 
         if float_isclose(self.point.time, other.point.time):
             if self.priority == other.priority:
-                return self.point.position < other.point.position
+                return self.point.position > other.point.position
 
             return self.priority < other.priority
 
@@ -158,7 +160,7 @@ class IntersectionEvent(Event):
             interfaces (list[Interface]): the interfaces that are intersecting at this event
         """
 
-        super().__init__(point, EventType.intersection, 2)
+        super().__init__(point, EventType.intersection, 1)
 
         self.interfaces = interfaces
 
@@ -215,7 +217,7 @@ class TruncationEvent(Event):
     right_truncated: bool = False
 
     def __init__(self, point: dtPoint, user_interface: Interface, interfaces: list):
-        super().__init__(point, EventType.truncation, 3)
+        super().__init__(point, EventType.truncation, 0)
 
         self.interfaces = interfaces
         self.user_interface = user_interface
@@ -452,8 +454,8 @@ class Interface:  # boundary between two states
             return False
 
         # if the two interfaces are disjoint in terms of endpoints, they are not equivalent
-        if (other.endpoints[1].time < self.endpoints[0].time) or (
-            self.endpoints[1].time < other.endpoints[0].time
+        if not float_isclose(other.endpoints[1].time, self.endpoints[1].time) or not float_isclose(
+            other.endpoints[0].time, self.endpoints[0].time
         ):
             return False
 

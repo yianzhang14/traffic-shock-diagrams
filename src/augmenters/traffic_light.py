@@ -20,6 +20,7 @@ class TrafficLight(TrafficAugmenter):
         cycles: tuple[float, ...],
         blocking_states: tuple[bool, ...],
         init_state: int = 0,
+        delay: float = 0,
     ):
         """Traffic light constructor.
 
@@ -42,6 +43,11 @@ class TrafficLight(TrafficAugmenter):
             blocking_states  # list of whether each corresponding cycle is blocking or not
         )
 
+        self.delay = delay
+
+        if not delay >= 0:
+            raise ValueError("The delay must be positive")
+
         if not (self.init_state < len(self.cycles) and self.init_state >= 0):
             raise ValueError("The provided initial state is invalid.")
 
@@ -54,7 +60,7 @@ class TrafficLight(TrafficAugmenter):
 
     @override
     def init(self, simulation_time: float, events: SortedList, interfaces: list[Interface]):
-        time = 0
+        time = self.delay
         state = self.init_state
 
         # continue adding capacity events to the event queue until we are out of time

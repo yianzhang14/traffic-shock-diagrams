@@ -1,5 +1,4 @@
 import collections
-import math
 from typing import Callable, Optional, cast
 
 import matplotlib.pyplot as plt
@@ -14,6 +13,8 @@ from src.augmenters.base_augmenter import TrafficAugmenter
 from src.custom_types import Axes, Figure
 
 from .drawer_utils import (
+    EPS,
+    PLOT_THRESHOLD_OFFSET,
     CapacityEvent,
     Event,
     EventType,
@@ -27,11 +28,6 @@ from .drawer_utils import (
     float_isclose,
 )
 from .fundamental_diagram import FundamentalDiagram
-
-# from .state_handler import StateHandler
-
-PLOT_THRESHOLD_OFFSET = 5
-EPS = 1e-4
 
 
 class ShockwaveDrawer:
@@ -201,12 +197,19 @@ class ShockwaveDrawer:
                 assert interface.is_user_generated()
                 continue
 
-            cur = interface.get_pos_at_time(point.time)
+            cur = interface.get_pos_at_time(point.time + EPS)
 
-            if cur is None or float_isclose(point.position - cur, 0):
+            if cur is None:
                 continue
 
-            if scale * (point.position - cur) >= 0 and (scale * (point.position - cur) < min_dist):
+            if res and float_isclose(scale * (point.position - cur), min_dist):
+                if (below and interface.slope > res.slope) or (
+                    not below and interface.slope < res.slope
+                ):
+                    res = interface
+            elif scale * (point.position - cur) >= 0 and (
+                scale * (point.position - cur) < min_dist
+            ):
                 res = interface
 
                 min_dist = scale * (point.position - cur)
@@ -592,20 +595,20 @@ class ShockwaveDrawer:
             line_plotter, num_trajectories, with_trajectories
         )
 
-        ax.set_xbound(0, max_time)
+        ax.set_xbound(-PLOT_THRESHOLD_OFFSET, max_time)
         ax.set_ybound(min_pos - PLOT_THRESHOLD_OFFSET, max_pos)
 
         if with_polygons:
             polygons = self._resolve_polygons(max_time, max_pos, min_pos - PLOT_THRESHOLD_OFFSET)
 
-            color_space = sns.color_palette("rainbow", len(polygons))
+            color_space = sns.color_palette("tab20", len(polygons))
 
             for i, polygon in enumerate(polygons):
                 ax.add_patch(
                     Polygon(
                         polygon.exterior.coords,
                         closed=True,
-                        alpha=0.3,
+                        alpha=0.2,
                         color=color_space[i],
                     )
                 )
@@ -617,7 +620,7 @@ class ShockwaveDrawer:
     def _create_figure(
         self, line_plotter: Callable, num_trajectories: int, with_trajectories: bool
     ) -> tuple[float, float, float]:
-        color_space = sns.color_palette("tab10", int(len(self.interfaces) ** 0.5) + 10)
+        color_space = sns.color_palette("tab20", int(len(self.interfaces) ** 0.5) + 10)
         idx = 0
 
         max_pos: float = -1
@@ -836,7 +839,11 @@ class ShockwaveDrawer:
         return fig
 
     def _resolve_polygons(
-        self, max_time: float, max_position: float, min_position: float
+        self,
+        max_time: float,
+        max_position: float,
+        min_position: float,
+        min_time: float = 0,
     ) -> list[Polygon]:
         self.polygons = []
 
@@ -844,8 +851,8 @@ class ShockwaveDrawer:
             lambda: set()
         )
 
-        bottom_left = dtPoint(0, min_position)
-        top_left = dtPoint(0, max_position)
+        bottom_left = dtPoint(min_time, min_position)
+        top_left = dtPoint(min_time, max_position)
         bottom_right = dtPoint(max_time, min_position)
         top_right = dtPoint(max_time, max_position)
 
@@ -892,7 +899,7 @@ class ShockwaveDrawer:
         seen: set[tuple[dtPoint, dtPoint]] = set()
         for point in graph.keys():
             if (
-                float_isclose(point.time, 0)
+                float_isclose(point.time, min_time)
                 or float_isclose(point.position, max_position)
                 or float_isclose(point.position, min_position)
             ):
@@ -948,7 +955,9 @@ class ShockwaveDrawer:
 
             polygon = shp.Polygon([(x.time, x.position) for x in stack])
 
-            if not float_isclose(polygon.area, max_time * (max_position - min_position)):
+            if not float_isclose(
+                polygon.area, (max_time - min_time) * (max_position - min_position)
+            ):
                 polygons.append(polygon)
 
         return polygons
