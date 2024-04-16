@@ -83,6 +83,7 @@ class EventType(Enum):
 
     intersection = 1  # event where two interfaces interesect
     capacity = 2  # event where capacity changes (user-created typically)
+    truncation = 3
 
 
 @dataclass
@@ -152,9 +153,9 @@ class IntersectionEvent(Event):
             interfaces (list[Interface]): the interfaces that are intersecting at this event
         """
 
-        super().__init__(point, EventType.intersection, 1)
+        super().__init__(point, EventType.intersection, 2)
 
-        self.interfaces = interfaces  # always make the acting interface the first one
+        self.interfaces = interfaces
 
 
 @dataclass
@@ -200,6 +201,18 @@ class CapacityEvent(Event):
 
         self.prior_capacity = prior_capacity
         self.posterior_capacity = posterior_capacity
+
+
+@dataclass
+class TruncationEvent(Event):
+    user_interface: Interface
+    interfaces: list[Interface]
+
+    def __init__(self, point: dtPoint, user_interface: Interface, interfaces: list):
+        super().__init__(point, EventType.truncation, 3)
+
+        self.interfaces = interfaces
+        self.user_interface = user_interface
 
 
 @dataclass
@@ -374,6 +387,11 @@ class Interface:  # boundary between two states
             lower (Optional[dtPoint]): the lower cutoff to add (w.r.t. time), if any
             upper (Optional[dtPoint]): the upper cutoff to add (w.r.t. time), if any
         """
+        if lower and self.has_endpoint(lower):
+            lower = None
+        if upper and self.has_endpoint(upper):
+            upper = None
+
         # error checking for for argument validity
         if not (not lower or float_isclose(self.slope, self.point.get_slope(lower))):
             raise ValueError(

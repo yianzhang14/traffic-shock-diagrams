@@ -11,7 +11,6 @@ from src.augmenters.base_augmenter import TrafficAugmenter
 from src.custom_types import Axes, Figure
 
 from .drawer_utils import (
-    ABS_TOL,
     CapacityEvent,
     Event,
     EventType,
@@ -19,6 +18,7 @@ from .drawer_utils import (
     IntersectionEvent,
     State,
     Trajectory,
+    TruncationEvent,
     UserInterface,
     dtPoint,
     float_isclose,
@@ -111,6 +111,9 @@ class ShockwaveDrawer:
         min_intersect: dtPoint | None = None
         min_interfaces: list[Interface] = []
 
+        min_truncation: dtPoint | None = None
+        min_truncation_interfaces: list[Interface] = []
+
         # find the interface that intersects the closest from the given interface
         for x in self.interfaces:
             assert not x.equivalent_to(interface)  # basic sanity check -- should never happen
@@ -120,14 +123,23 @@ class ShockwaveDrawer:
             # ignore overlaps and non-intersecting interfaces
             if intersect is None or interface.has_endpoint(intersect):
                 continue
-            elif min_intersect and min_intersect == intersect:
-                min_interfaces.append(x)
-            elif not min_intersect or intersect.time < min_intersect.time:
-                min_intersect = intersect
-                min_interfaces = [x]
+
+            if x.is_user_generated():
+                if min_truncation and min_truncation == intersect:
+                    min_truncation_interfaces.append(x)
+                elif not min_truncation or intersect.time < min_truncation.time:
+                    min_truncation = intersect
+                    min_truncation_interfaces = [x]
+            else:
+                if min_intersect and min_intersect == intersect:
+                    min_interfaces.append(x)
+                elif not min_intersect or intersect.time < min_intersect.time:
+                    min_intersect = intersect
+                    min_interfaces = [x]
 
         # add the interface in question to the list since that is part of the event
         min_interfaces.append(interface)
+        min_truncation_interfaces.append(interface)
 
         # if we have an interesct, generate an IntersectionEvent between these two interfaces
         if min_intersect:
@@ -144,6 +156,13 @@ class ShockwaveDrawer:
                 event = IntersectionEvent(min_intersect, min_interfaces)
                 self.events.add(event)
                 self.intersections[min_intersect] = event
+
+        if min_truncation:
+            self.events.add(
+                TruncationEvent(
+                    min_truncation, min_truncation_interfaces[0], min_truncation_interfaces[1:]
+                )
+            )
 
         # add the interface to the list
         self.interfaces.append(interface)
@@ -197,7 +216,7 @@ class ShockwaveDrawer:
 
         return self.default_state
 
-    def _handle_capacity_event(self, cur: CapacityEvent) -> None:
+    def _handle_capacity_event(self, cur: CapacityEvent) -> bool:
         """Private function for handling a capacity event. Determines what to do
         using the prior/posterior capacity (adjusted for the current state)
         and the fundamental diagram.
@@ -233,9 +252,11 @@ class ShockwaveDrawer:
             posterior_capacity > prior_capacity or float_isclose(posterior_capacity, prior_capacity)
         ) and not self.diagram.state_is_queued(below):
             self.latent_events[cur.interface] = (cur.prior_capacity, cur.posterior_capacity)
-            return
+            return False
         # we have an actual event with a decrease in capacity
         else:
+            state_created = False
+
             # main interface of the event; direct result of the reduction in capacity
             main_interface_state = self.diagram.get_state_by_flow(posterior_capacity, below)
 
@@ -262,6 +283,8 @@ class ShockwaveDrawer:
                     cur.interface.below = main_interface.above
                 elif main_interface.slope > interface_slope:
                     cur.interface.above = main_interface.below
+
+                state_created |= True
 
             # the byproduct of the event -- for conservation of cars
             byproduct_interface_state = self.diagram.get_state_by_flow(
@@ -291,6 +314,10 @@ class ShockwaveDrawer:
                 elif byproduct_interface.slope > interface_slope:
                     cur.interface.above = byproduct_interface.below
 
+                state_created |= True
+
+            return state_created
+
     def _handle_intersection_event(self, cur: IntersectionEvent) -> None:
         """Handles an intersection event. Determines behavior purely using
         the intersecting interfaces in question and basic dt-diagram
@@ -309,59 +336,16 @@ class ShockwaveDrawer:
         # resolve the actual interfaces at question -- during execution, may have invalidated some
         # so need to remove the interfaces that would not longer be cutoff here
         interfaces: list[Interface] = []
-        user_interface: Interface | None = None
 
         for interface in cur.interfaces:
+            assert not interface.is_user_generated()
+
             if interface.get_pos_at_time(cur.point.time) is None:
                 continue
             interfaces.append(interface)
 
-            if interface.is_user_generated():
-                # assume we cannot have user interface intersections
-                # we literally can't -- they aren't generated on augment init
-                assert user_interface is None
-                user_interface = interface
-
         # don't do anything if there is nothing else to do
         if len(interfaces) <= 1:
-            return
-
-        # assumption: if we ever have an intersection with an user-generated interface,
-        # this is because the user-generated interface started within an empty state
-        # (the converse where the user-generated interface hit an empty state is impossible
-        # since it would've made an interface below it that would hit the empty state instead)
-        # in this case, we need some custom logic to handle things
-        if user_interface:
-            # if the current interface is a latent event, we process it as such
-            if user_interface in self.latent_events:
-                # extract prior/post capacity to inform the capacity event
-                prior_cap, post_cap = self.latent_events.pop(user_interface)
-                print("converting to capacity event")
-
-                # handle the capacity event using the information we have
-                self._handle_capacity_event(
-                    CapacityEvent(
-                        cur.point,
-                        user_interface,
-                        prior_capacity=prior_cap,
-                        posterior_capacity=post_cap,
-                    )
-                )
-
-                # XXX: truncate everything accordingly -- this would only work for traffic lights
-                # since this assumes that there is no need for an interface above the user-generated
-                # interface -- i.e. this implies that the state above the user-generated interface
-                # is empty
-                for interface in interfaces:
-                    if interface == user_interface:
-                        continue
-
-                    interface.add_cutoff(upper=cur.point)
-
-                # optional: truncate the user-generated interface to actually
-                # start where it is supposed to (where there is flow to manipulate)
-                user_interface.add_cutoff(lower=cur.point)
-
             return
 
         # determine which state is above/below using interface slopes
@@ -399,6 +383,7 @@ class ShockwaveDrawer:
 
         # don't create new interface if there is no actual change in state
         # see three intersection for an example
+        print(above, below)
         if above != below:
             # creat the new interface using the found above/below states
             # goes outwards from this current point to higher times
@@ -411,6 +396,61 @@ class ShockwaveDrawer:
             )
 
             self._add_interface(new_interface)
+
+    def _handle_truncation_event(self, cur: TruncationEvent) -> None:
+        interfaces: list[Interface] = []
+
+        for interface in cur.interfaces:
+            if interface.get_pos_at_time(cur.point.time) is None:
+                continue
+            interfaces.append(interface)
+
+        if cur.user_interface.get_pos_at_time(cur.point.time) is None:
+            return
+
+        if len(interfaces) == 0:
+            return
+
+        # assumption: if we ever have an intersection with an user-generated interface,
+        # this is because the user-generated interface started within an empty state
+        # (the converse where the user-generated interface hit an empty state is impossible
+        # since it would've made an interface below it that would hit the empty state instead)
+        # in this case, we need some custom logic to handle things
+
+        # if the current interface is a latent event, we process it as such
+        if cur.user_interface in self.latent_events:
+            # extract prior/post capacity to inform the capacity event
+            prior_cap, post_cap = self.latent_events.pop(cur.user_interface)
+            print("converting to capacity event")
+
+            # handle the capacity event using the information we have
+            state_created = self._handle_capacity_event(
+                CapacityEvent(
+                    cur.point,
+                    cur.user_interface,
+                    prior_capacity=prior_cap,
+                    posterior_capacity=post_cap,
+                )
+            )
+
+            # XXX: truncate everything accordingly -- this would only work for traffic lights
+            # since this assumes that there is no need for an interface above the user-generated
+            # interface -- i.e. this implies that the state above the user-generated interface
+            # is empty
+            if state_created:
+                for interface in interfaces:
+                    if interface == cur.user_interface:
+                        continue
+
+                    interface.add_cutoff(upper=cur.point)
+
+                # optional: truncate the user-generated interface to actually
+                # start where it is supposed to (where there is flow to manipulate)
+                cur.user_interface.add_cutoff(lower=cur.point)
+        else:
+            cur.user_interface.add_cutoff(upper=cur.point)
+
+        return
 
     def run(self):
         """Main function to generate the shockwave diagram given the inputs."""
@@ -437,6 +477,8 @@ class ShockwaveDrawer:
                     self._handle_capacity_event(cur)
                 case EventType.intersection:
                     self._handle_intersection_event(cur)
+                case EventType.truncation:
+                    self._handle_truncation_event(cur)
 
     # plotting utilities vvv
 
@@ -650,7 +692,7 @@ class ShockwaveDrawer:
         except Exception as e:
             print(e)
 
-        return max_pos, max_time, min_pos
+        return max_pos, max_time, min_pos if min_pos != float("inf") else 0
 
     def create_legend(self) -> tuple[Figure, Axes]:
         """This function creates a helpful visual legend for what interfaces represent
