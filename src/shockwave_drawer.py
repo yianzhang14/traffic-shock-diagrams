@@ -229,11 +229,10 @@ class ShockwaveDrawer:
         # if we have an increase in capacity and there is not enough density (queuing)
         # to take advantage of that increase, do nothing -- no interface created
         # this applies to 0 into 0 since posterior and prior both 0
-        if (posterior_capacity > prior_capacity + ABS_TOL) and not self.diagram.state_is_queued(
-            below
-        ):
+        if (
+            posterior_capacity > prior_capacity or float_isclose(posterior_capacity, prior_capacity)
+        ) and not self.diagram.state_is_queued(below):
             self.latent_events[cur.interface] = (cur.prior_capacity, cur.posterior_capacity)
-            print(prior_capacity, posterior_capacity, below)
             return
         # we have an actual event with a decrease in capacity
         else:
@@ -292,8 +291,6 @@ class ShockwaveDrawer:
                 elif byproduct_interface.slope > interface_slope:
                     cur.interface.above = byproduct_interface.below
 
-            print(main_interface_state, byproduct_interface_state)
-
     def _handle_intersection_event(self, cur: IntersectionEvent) -> None:
         """Handles an intersection event. Determines behavior purely using
         the intersecting interfaces in question and basic dt-diagram
@@ -339,6 +336,7 @@ class ShockwaveDrawer:
             if user_interface in self.latent_events:
                 # extract prior/post capacity to inform the capacity event
                 prior_cap, post_cap = self.latent_events.pop(user_interface)
+                print("converting to capacity event")
 
                 # handle the capacity event using the information we have
                 self._handle_capacity_event(
@@ -439,6 +437,8 @@ class ShockwaveDrawer:
                     self._handle_capacity_event(cur)
                 case EventType.intersection:
                     self._handle_intersection_event(cur)
+
+    # plotting utilities vvv
 
     def _find_closest_intersection_traj(
         self, cur: Trajectory
