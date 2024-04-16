@@ -847,7 +847,7 @@ class ShockwaveDrawer:
         max_time: float,
         max_position: float,
         min_position: float,
-        min_time: float = 0,
+        min_time: float = -PLOT_THRESHOLD_OFFSET,
     ) -> list[Polygon]:
         self.polygons = []
 

@@ -310,7 +310,12 @@ class Interface:  # boundary between two states
         self.endpoints: list[dtPoint] = [lower_bound, upper_bound]
 
         if lower_bound is None:
-            self.endpoints[0] = dtPoint(0, self.point.position - self.slope * self.point.time)
+            self.endpoints[0] = dtPoint(
+                -PLOT_THRESHOLD_OFFSET,
+                self.point.position
+                - self.slope * self.point.time
+                - PLOT_THRESHOLD_OFFSET * self.slope,
+            )
 
         if upper_bound is None:
             self.endpoints[1] = dtPoint(float("inf"), float("inf"))
