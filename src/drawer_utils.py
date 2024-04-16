@@ -23,7 +23,6 @@ import shapely as shp  # type: ignore
 DIGIT_TOLERANCE = 4
 ABS_TOL = 1e-4
 PLOT_THRESHOLD_OFFSET = 1
-EPS = 1e-4
 
 
 def float_isclose(x: float, y: float) -> bool:
@@ -224,7 +223,7 @@ class TruncationEvent(Event):
     right_truncated: bool = False
 
     def __init__(self, point: dtPoint, user_interface: UserInterface, interfaces: list):
-        super().__init__(point, EventType.truncation, 0)
+        super().__init__(point, EventType.truncation, 1)
 
         self.interfaces = interfaces
         self.user_interface = user_interface

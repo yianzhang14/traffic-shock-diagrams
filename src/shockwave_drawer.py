@@ -19,7 +19,6 @@ from src.augmenters.base_augmenter import CapacityBottleneck
 from src.custom_types import Axes, Figure
 
 from .drawer_utils import (
-    EPS,
     PLOT_THRESHOLD_OFFSET,
     CapacityEvent,
     Event,
@@ -214,7 +213,7 @@ class ShockwaveDrawer:
                 assert interface.is_user_generated()
                 continue
 
-            cur = interface.get_pos_at_time(point.time + EPS)
+            cur = interface.get_pos_at_time(point.time)
 
             if cur is None or float_isclose(point.position, cur):
                 continue
@@ -250,6 +249,8 @@ class ShockwaveDrawer:
             above (State): the state above the point of the capacity event
             below (State): the state below the point of the capacity event
         """
+        if cur.interface.get_pos_at_time(cur.point.time) is None:
+            return False
         above = self._resolve_state(cur.point, below=False)
         below = self._resolve_state(cur.point, below=True)
 
@@ -265,6 +266,8 @@ class ShockwaveDrawer:
             else cur.posterior_capacity
         )
 
+        interface_slope = cur.interface.get_slope()
+
         # we are limited by the flow of the incoming state IF the state is queued
         if not self.diagram.state_is_queued(below):
             posterior_capacity = min(posterior_capacity, below.flow)
@@ -277,6 +280,15 @@ class ShockwaveDrawer:
             posterior_capacity > prior_capacity or float_isclose(posterior_capacity, prior_capacity)
         ) and not self.diagram.state_is_queued(below):
             self.latent_events[cur.interface] = (cur.prior_capacity, cur.posterior_capacity)
+            self._add_interface(
+                Interface(
+                    cur.point,
+                    self.diagram.get_interface_slope(above.density, below.density),
+                    above,
+                    below,
+                    lower_bound=cur.point,
+                )
+            )
             return False
         # we have an actual event with a decrease in capacity
         else:
@@ -295,21 +307,18 @@ class ShockwaveDrawer:
                     lower_bound=cur.point,
                 )
 
-                print(main_interface, main_interface.above, main_interface.below)
-
                 self._add_interface(main_interface)
-
-                interface_slope = cur.interface.get_slope()
 
                 # this assumes that the interface are logically consistent -- for any time this
                 # interface setting may occur, the result would be identical
                 if float_isclose(main_interface.slope, interface_slope):
                     # this means it is exactly the current interface slope -- invalid
+                    print(main_interface)
                     raise RuntimeError("An invalid interface was somehow created")
 
                 assert main_interface.above and main_interface.below
 
-                if cur.interface.get_pos_at_time(cur.point.time + EPS) is None:
+                if cur.interface.endpoints[1] == cur.point:
                     if main_interface.slope < interface_slope:
                         cur.interface.set_below_state(main_interface.below)
                     elif main_interface.slope > interface_slope:
@@ -321,6 +330,8 @@ class ShockwaveDrawer:
                         cur.interface.set_above_state(main_interface.below)
 
                 state_created |= True
+            else:
+                cur.interface.set_below_state(below)
 
             # the byproduct of the event -- for conservation of cars
             byproduct_interface_state = self.diagram.get_state_by_flow(
@@ -344,11 +355,12 @@ class ShockwaveDrawer:
 
                 if float_isclose(byproduct_interface.slope, interface_slope):
                     # this means it is exactly the current interface slope -- invalid
+                    print(byproduct_interface)
                     raise RuntimeError("An invalid interface was somehow created")
 
                 assert byproduct_interface.below and byproduct_interface.above
 
-                if cur.interface.get_pos_at_time(cur.point.time + EPS) is None:
+                if cur.interface.endpoints[1] == cur.point:
                     if byproduct_interface.slope < interface_slope:
                         cur.interface.set_below_state(byproduct_interface.below)
                     elif byproduct_interface.slope > interface_slope:
@@ -360,10 +372,14 @@ class ShockwaveDrawer:
                         cur.interface.set_above_state(byproduct_interface.below)
 
                 state_created |= True
+            else:
+                cur.interface.set_above_state(above)
+
+            print(main_interface_state, byproduct_interface_state)
 
             return state_created
 
-    def _handle_intersection_event(self, cur: IntersectionEvent) -> None:
+    def _handle_intersection_event(self, cur: IntersectionEvent, fiat: bool = False) -> bool:
         """Handles an intersection event. Determines behavior purely using
         the intersecting interfaces in question and basic dt-diagram
         resolutions.
@@ -376,7 +392,8 @@ class ShockwaveDrawer:
         assert len(cur.interfaces) >= 2
 
         # remove the intersectionevent from the dictionary
-        self.intersections.pop(cur.point)
+        if not fiat:
+            self.intersections.pop(cur.point)
 
         # resolve the actual interfaces at question -- during execution, may have invalidated some
         # so need to remove the interfaces that would not longer be cutoff here
@@ -385,7 +402,7 @@ class ShockwaveDrawer:
         truncation_events: list[TruncationEvent] = []
 
         for interface in cur.interfaces:
-            assert not interface.is_user_generated()
+            assert fiat or not interface.is_user_generated()
 
             if interface.get_pos_at_time(cur.point.time) is None:
                 continue
@@ -396,7 +413,7 @@ class ShockwaveDrawer:
 
         # don't do anything if there is nothing else to do
         if len(interfaces) <= 1:
-            return
+            return False
 
         # determine which state is above/below using interface slopes
         maxslope = float("-inf")
@@ -424,7 +441,7 @@ class ShockwaveDrawer:
                 no_new_interface = True
 
         if no_new_interface:
-            return
+            return False
 
         # this basically checks that above/below are not None -- may break on
         # intersection with user-inputted interfaces since
@@ -445,6 +462,10 @@ class ShockwaveDrawer:
             )
 
             self._add_interface(new_interface)
+
+            return True
+
+        return False
 
     def _handle_truncation_event(self, cur: TruncationEvent) -> None:
         """Handles truncation events -- events involving intersection with an userinterface.
@@ -467,19 +488,21 @@ class ShockwaveDrawer:
         if len(interfaces) == 0:
             return
 
+        for interface in interfaces:
+            if interface == cur.user_interface:
+                continue
+
+            interface.add_cutoff(upper=cur.point)
+
         # if the current interface is a latent event, we process it as such
         if cur.user_interface in self.latent_events:
             if cur.user_interface.has_endpoint(cur.point):
                 return
-
-            for interface in interfaces:
-                if interface == cur.user_interface:
-                    continue
-
-                interface.add_cutoff(upper=cur.point)
             # extract prior/post capacity to inform the capacity event
             prior_cap, post_cap = self.latent_events.pop(cur.user_interface)
             print("converting to capacity event")
+
+            cur.user_interface.add_cutoff(lower=cur.point)
 
             # handle the capacity event using the information we have
             state_created = self._handle_capacity_event(
@@ -491,29 +514,24 @@ class ShockwaveDrawer:
                 )
             )
 
-            # XXX: truncate everything accordingly -- this would only work for traffic lights
-            # since this assumes that there is no need for an interface above the user-generated
-            # interface -- i.e. this implies that the state above the user-generated interface
-            # is empty
-            if state_created:
-                # optional: truncate the user-generated interface to actually
-                # start where it is supposed to (where there is flow to manipulate)
-                cur.user_interface.add_cutoff(lower=cur.point)
         elif cur.user_interface.has_valid_states():
             print("handling right truncation event")
 
-            self.latent_events[cur.user_interface] = (-1, cur.user_interface.augment.bottleneck)
-            new_interface = copy.deepcopy(cur.user_interface)
-            self.interfaces.append(new_interface)
-            new_interface.add_cutoff(upper=cur.point)
-            cur.user_interface.add_cutoff(lower=cur.point)
+            # self.latent_events[cur.user_interface] = (-1, cur.user_interface.augment.bottleneck)
+            # new_interface = copy.deepcopy(cur.user_interface)
+            # self.interfaces.append(new_interface)
+            # new_interface.add_cutoff(upper=cur.point)
+            # cur.user_interface.add_cutoff(lower=cur.point)
 
-            self._handle_capacity_event(
-                CapacityEvent(cur.point, new_interface, new_interface.augment.bottleneck, -1)
+            state_created = self._handle_intersection_event(
+                IntersectionEvent(cur.point, [cur.user_interface] + cur.interfaces), fiat=True
             )
-        else:
-            for interface in interfaces:
-                interface.add_cutoff(upper=cur.point)
+
+            if state_created:
+                for interface in interfaces:
+                    interface.add_cutoff(upper=cur.point)
+
+                cur.user_interface.add_cutoff(upper=cur.point)
 
     def run(self) -> None:
         """Main function to generate the shockwave diagram given the inputs."""
@@ -704,6 +722,15 @@ class ShockwaveDrawer:
         max_time = max(max_time, self.simulation_time) + PLOT_THRESHOLD_OFFSET * 5
 
         for interface in self.interfaces:
+            if interface.is_user_generated():
+                line_plotter(
+                    cast(UserInterface, interface).original_lower_bound,
+                    cast(UserInterface, interface).original_upper_bound,
+                    alpha=0.9,
+                    dotted=False,
+                    dashed=True,
+                    color="black",
+                )
             # don't draw interfaces without valid states -- if they don't
             # have valid states, they weren't ever processed
             if not interface.has_valid_states():
@@ -743,16 +770,6 @@ class ShockwaveDrawer:
 
             if p1 != p2:
                 line_plotter(p1, p2, dotted=True, color=color)
-
-            if interface.is_user_generated():
-                line_plotter(
-                    cast(UserInterface, interface).original_lower_bound,
-                    cast(UserInterface, interface).original_upper_bound,
-                    alpha=0.9,
-                    dotted=False,
-                    dashed=True,
-                    color="black",
-                )
 
         if with_trajectories and backbone == "plt":
             # gap = self.default_state.density
@@ -815,7 +832,9 @@ class ShockwaveDrawer:
         min_pos = min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
 
         if with_polygons:
-            line = LineString([(0, max_interface_pos), (max_time, max_interface_pos)])
+            line = LineString(
+                [(-10 * PLOT_THRESHOLD_OFFSET, max_interface_pos), (max_time, max_interface_pos)]
+            )
             polygons = self._resolve_polygons(max_time, max_pos, min_pos)
 
             state_color_space = sns.color_palette("Spectral_r", as_cmap=True)
@@ -823,9 +842,10 @@ class ShockwaveDrawer:
 
             for polygon in polygons:
                 pieces = split(polygon, line)
-                midpoint: shp.Point = shp.centroid(polygon)
+                midpoint: shp.Point = polygon.representative_point()
+
                 for geom in pieces.geoms:
-                    piece_center: shp.Point = shp.centroid(geom)
+                    piece_center: shp.Point = geom.representative_point()
                     if piece_center.y < midpoint.y:
                         midpoint = piece_center
 
@@ -859,7 +879,7 @@ class ShockwaveDrawer:
 
             add_colorbar(scalarmappable)
 
-        return (max_pos, max_time, min_pos)
+        return (max_interface_pos, max_time, min_pos)
 
     def create_state_legend(self) -> tuple[Figure, Axes]:
         fig, ax = self.diagram.show()
@@ -1095,7 +1115,7 @@ class ShockwaveDrawer:
                         max_angle = angle
                         next_point = neighbor
 
-                if next_point == point:
+                if next_point is None or next_point == point:
                     break
                 cur = next_point
 
