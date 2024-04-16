@@ -401,9 +401,7 @@ class ShockwaveDrawer:
             self._add_interface(new_interface)
 
         for event in truncation_events:
-            print(event)
             if event.right_truncated:
-                print(cur.point, event.user_interface.endpoints)
                 below_state = self._resolve_state(cur.point)
                 self._add_interface(
                     Interface(
@@ -677,6 +675,7 @@ class ShockwaveDrawer:
 
                         if x is not None:
                             intersection, interface = x
+                            interface: Interface
                             next_trajectory = Trajectory(
                                 intersection, interface.above.get_slope(), lower_bound=intersection
                             )
