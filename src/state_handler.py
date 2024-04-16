@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import shapely as shp
-from shapely.geometry import Polygon
+import shapely as shp  # type: ignore
+from shapely.geometry import Polygon  # type: ignore
 
 # from .diagram_utils import Event, EventType, Interface, State, dtPoint
 from .drawer_utils import State, dtPoint

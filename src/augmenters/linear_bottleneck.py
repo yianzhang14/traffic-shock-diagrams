@@ -1,6 +1,5 @@
-from typing import override
-
-from sortedcontainers import SortedList
+from sortedcontainers import SortedList  # type: ignore
+from typing_extensions import override
 
 from ..drawer_utils import CapacityEvent, Interface, UserInterface, dtPoint
 from .base_augmenter import TrafficAugmenter

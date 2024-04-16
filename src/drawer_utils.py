@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import copy
 import math
+import typing
 from abc import ABC
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import total_ordering
 from itertools import count
-from typing import TYPE_CHECKING, Optional, override
+from typing import TYPE_CHECKING, Optional
+
+from typing_extensions import override
 
 # need to do this to avoid a circular import
 if TYPE_CHECKING:
-    from augmenters.base_augmenter import TrafficAugmenter
+    from augmenters.base_augmenter import TrafficAugmenter  # type: ignore
 
-import shapely as shp
+import shapely as shp  # type: ignore
 
 # from .fundamental_diagram import FundamentalDiagram
 
@@ -41,7 +44,7 @@ class dtPoint:
     time: float
     position: float
 
-    def __eq__(self, other: dtPoint):
+    def __eq__(self, other: object):
         """Overload of the equality operator for points.
         Two points are equal if their time/position are equivalent up to floating point precision.
 
@@ -51,6 +54,8 @@ class dtPoint:
         Returns:
             bool: whether or not the points are equal
         """
+        if not isinstance(other, dtPoint):
+            raise NotImplementedError
         # two points are equal if their time and position are equal, up to floating point error
         return float_isclose(self.time, other.time) and float_isclose(self.position, other.position)
 
@@ -107,7 +112,7 @@ class Event(ABC):
 
     disabled: bool = field(default=False, kw_only=True)
 
-    def __eq__(self, other: Event) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Overload of equality for events. Two events are equal if they have the same time.
         Only defined for comparison/sorting convenience.
 
@@ -117,6 +122,8 @@ class Event(ABC):
         Returns:
             bool: whether or not the events are equal
         """
+        if not isinstance(other, Event):
+            raise NotImplementedError
         return self.point == other.point and self.priority == other.priority
 
     def __lt__(self, other: Event) -> bool:
@@ -175,12 +182,12 @@ class CapacityEvent(Event):
 
     prior_capacity: float
     posterior_capacity: float
-    interface: Interface
+    interface: UserInterface
 
     def __init__(
         self,
         point: dtPoint,
-        interface: Interface,
+        interface: UserInterface,
         prior_capacity: float = -1,
         posterior_capacity: float = -1,
     ):
@@ -216,7 +223,7 @@ class TruncationEvent(Event):
     interfaces: list[Interface]
     right_truncated: bool = False
 
-    def __init__(self, point: dtPoint, user_interface: Interface, interfaces: list):
+    def __init__(self, point: dtPoint, user_interface: UserInterface, interfaces: list):
         super().__init__(point, EventType.truncation, 0)
 
         self.interfaces = interfaces
@@ -256,7 +263,7 @@ class State:
 
         return self.flow / self.density
 
-    def __eq__(self, other: State) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Overload of state equality. Two states are equal if they have the same density
         and flow values, up to floating point error.
 
@@ -266,6 +273,8 @@ class State:
         Returns:
             bool: whether or not they are equal
         """
+        if not isinstance(other, State):
+            raise NotImplementedError
         return float_isclose(self.density, other.density) and float_isclose(self.flow, other.flow)
 
     def __hash__(self) -> int:
@@ -307,10 +316,8 @@ class Interface:  # boundary between two states
         self.point = point
         self.slope = slope
 
-        self.endpoints: list[dtPoint] = [lower_bound, upper_bound]
-
         if lower_bound is None:
-            self.endpoints[0] = dtPoint(
+            lower_bound = dtPoint(
                 -PLOT_THRESHOLD_OFFSET,
                 self.point.position
                 - self.slope * self.point.time
@@ -318,7 +325,9 @@ class Interface:  # boundary between two states
             )
 
         if upper_bound is None:
-            self.endpoints[1] = dtPoint(float("inf"), float("inf"))
+            upper_bound = dtPoint(float("inf"), float("inf"))
+
+        self.endpoints: list[dtPoint] = [lower_bound, upper_bound]
 
         self.above = above
         self.below = below
@@ -429,7 +438,7 @@ class Interface:  # boundary between two states
 
         # update point to always be within the points
         if lower is None:
-            self.point = upper
+            self.point = typing.cast(dtPoint, upper)
         else:
             self.point = lower
 
@@ -493,7 +502,9 @@ class Interface:  # boundary between two states
 
     # for now, define equality by the id/address of an object
 
-    def __eq__(self, other: Interface) -> bool:
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Interface):
+            raise NotImplementedError
         return id(self) == id(other)
 
     def __hash__(self) -> int:

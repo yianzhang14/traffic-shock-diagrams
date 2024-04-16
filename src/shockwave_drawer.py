@@ -1,13 +1,13 @@
 import collections
-from typing import Callable, Optional, cast
+from typing import Any, Callable, Optional, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
-import plotly.graph_objects as go
-import seaborn as sns
-import shapely.geometry as shp
+import plotly.graph_objects as go  # type: ignore
+import seaborn as sns  # type: ignore
+import shapely.geometry as shp  # type: ignore
 from matplotlib.patches import Polygon
-from sortedcontainers import SortedList
+from sortedcontainers import SortedList  # type: ignore
 
 from src.augmenters.base_augmenter import TrafficAugmenter
 from src.custom_types import Axes, Figure
@@ -70,7 +70,7 @@ class ShockwaveDrawer:
 
         self.augments: list[TrafficAugmenter] = augments
 
-    def _setup(self):
+    def _setup(self) -> None:
         """This function initializes all the data structures needed to run through the
         shockwave drawer. If already run through once, this resets all the data structures
         for a correct rerun."""
@@ -139,8 +139,11 @@ class ShockwaveDrawer:
         min_truncation_interfaces.append(interface)
 
         if min_truncation:
+            assert isinstance(min_truncation_interfaces[0], UserInterface)
             truncation_event = TruncationEvent(
-                min_truncation, min_truncation_interfaces[0], min_truncation_interfaces[1:]
+                min_truncation,
+                min_truncation_interfaces[0],
+                min_truncation_interfaces[1:],
             )
             self.events.add(truncation_event)
 
@@ -152,7 +155,8 @@ class ShockwaveDrawer:
             # can just do address comparison (no __eq__ overwriting) since we are only looking
             # at existing interfaces (i think -- should check)
             if min_intersect in self.intersections:
-                event: IntersectionEvent = self.intersections.get(min_intersect)
+                event: IntersectionEvent | None = self.intersections.get(min_intersect)
+                assert event is not None
 
                 for interface in min_interfaces:
                     if interface not in event.interfaces:
@@ -216,6 +220,7 @@ class ShockwaveDrawer:
 
         # return the found state or default state if none found
         if res:
+            assert res.above and res.below
             if below:
                 return res.above
             return res.below
@@ -482,7 +487,7 @@ class ShockwaveDrawer:
             for interface in interfaces:
                 interface.add_cutoff(upper=cur.point)
 
-    def run(self):
+    def run(self) -> None:
         """Main function to generate the shockwave diagram given the inputs."""
 
         self.i = 0
@@ -504,11 +509,11 @@ class ShockwaveDrawer:
             # handle the vent based on its type
             match cur.type:
                 case EventType.capacity:
-                    self._handle_capacity_event(cur)
+                    self._handle_capacity_event(cast(CapacityEvent, cur))
                 case EventType.intersection:
-                    self._handle_intersection_event(cur)
+                    self._handle_intersection_event(cast(IntersectionEvent, cur))
                 case EventType.truncation:
-                    self._handle_truncation_event(cur)
+                    self._handle_truncation_event(cast(TruncationEvent, cur))
 
     # plotting utilities vvv
 
@@ -567,7 +572,7 @@ class ShockwaveDrawer:
         """
 
         fig, ax = plt.subplots(figsize=(20, 10))
-        ax: Axes
+        assert isinstance(ax, Axes)
 
         def line_plotter(
             p1: dtPoint,
@@ -578,7 +583,7 @@ class ShockwaveDrawer:
             linewidth: Optional[float] = None,
             dashed=False,
         ):
-            kwargs = {}
+            kwargs: dict[str, Any] = {}
             if dotted:
                 kwargs["marker"] = "o"
             if color:
@@ -593,34 +598,35 @@ class ShockwaveDrawer:
 
             ax.plot((p1.time, p2.time), (p1.position, p2.position), **kwargs)
 
+        def polygon_plotter(polygon: shp.Polygon, color=None, alpha: Optional[float] = None):
+            kwargs = {}
+
+            if alpha:
+                kwargs["alpha"] = alpha
+
+            if color:
+                kwargs["color"] = color
+
+            ax.add_patch(Polygon(polygon.exterior.coords, closed=True, **kwargs))
+
         max_pos, max_time, min_pos = self._create_figure(
-            line_plotter, num_trajectories, with_trajectories
+            line_plotter, polygon_plotter, num_trajectories, with_trajectories, with_polygons
         )
 
         ax.set_xbound(-PLOT_THRESHOLD_OFFSET, max_time)
         ax.set_ybound(min_pos - PLOT_THRESHOLD_OFFSET, max_pos)
-
-        if with_polygons:
-            polygons = self._resolve_polygons(max_time, max_pos, min_pos - PLOT_THRESHOLD_OFFSET)
-
-            color_space = sns.color_palette("tab20", len(polygons))
-
-            for i, polygon in enumerate(polygons):
-                ax.add_patch(
-                    Polygon(
-                        polygon.exterior.coords,
-                        closed=True,
-                        alpha=0.2,
-                        color=color_space[i],
-                    )
-                )
 
         plt.close(fig)
 
         return (fig, ax)
 
     def _create_figure(
-        self, line_plotter: Callable, num_trajectories: int, with_trajectories: bool
+        self,
+        line_plotter: Callable,
+        polygon_plotter: Callable,
+        num_trajectories: int,
+        with_trajectories: bool,
+        with_polygons: bool,
     ) -> tuple[float, float, float]:
         color_space = sns.color_palette("tab20", int(len(self.interfaces) ** 0.5) + 10)
         idx = 0
@@ -646,6 +652,7 @@ class ShockwaveDrawer:
             p2 = interface.endpoints[1]
 
             pos = interface.get_pos_at_time(max_time)
+            assert pos is not None
 
             min_pos = min(min_pos, p1.position)
 
@@ -659,9 +666,10 @@ class ShockwaveDrawer:
                     pos,
                 )
 
-            color = "black"
+            color: str | np.ndarray = "black"
 
             if not interface.is_user_generated():
+                assert interface.above and interface.below
                 tup: tuple[State, State] = (interface.above, interface.below)
 
                 if tup in self.colors:
@@ -669,6 +677,7 @@ class ShockwaveDrawer:
                 else:
                     color = color_space[idx]
                     idx += 1
+                    assert isinstance(color, np.ndarray)
                     self.colors[tup] = color
 
             if p1 != p2:
@@ -694,6 +703,7 @@ class ShockwaveDrawer:
                     max_pos,
                     num_trajectories,
                 ):
+                    assert isinstance(pos, float)
                     cur = Trajectory(dtPoint(0, pos + 0.1), slope)
 
                     while True:
@@ -702,7 +712,8 @@ class ShockwaveDrawer:
 
                         if x is not None:
                             intersection, interface = x
-                            interface: Interface
+                            assert interface.above
+
                             next_trajectory = Trajectory(
                                 intersection, interface.above.get_slope(), lower_bound=intersection
                             )
@@ -719,9 +730,11 @@ class ShockwaveDrawer:
                         p2 = cur.endpoints[1]
 
                         if p2.time == float("inf"):
+                            p2_pos = cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET)
+                            assert p2_pos
                             p2 = dtPoint(
                                 max_time + PLOT_THRESHOLD_OFFSET,
-                                cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET),
+                                p2_pos,
                             )
 
                         line_plotter(
@@ -739,6 +752,18 @@ class ShockwaveDrawer:
                             break
         except Exception as e:
             print(e)
+
+        if with_polygons:
+            polygons = self._resolve_polygons(max_time, max_pos, min_pos - PLOT_THRESHOLD_OFFSET)
+
+            color_space = sns.color_palette("tab20", len(polygons))
+
+            for i, polygon in enumerate(polygons):
+                polygon_plotter(
+                    polygon,
+                    color=color_space[i],
+                    alpha=0.2,
+                )
 
         return max_pos, max_time, min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
 
@@ -760,6 +785,8 @@ class ShockwaveDrawer:
             if not interface.has_valid_states():
                 continue
 
+            assert interface.above and interface.below
+
             above, below = interface.above, interface.below
             ax.arrow(
                 below.density,
@@ -773,7 +800,9 @@ class ShockwaveDrawer:
 
         return fig, ax
 
-    def create_figure_px(self, with_trajectories=False, num_trajectories: int = 100) -> go.Figure:
+    def create_figure_px(
+        self, with_trajectories=False, num_trajectories: int = 100, with_polygons=False
+    ) -> go.Figure:
         """This function generates a plotly figure showing the fundamental digram,
         using the currently generated interfaces stored in self.interfaces.
 
@@ -800,7 +829,7 @@ class ShockwaveDrawer:
             linewidth: Optional[float] = None,
             dashed=False,
         ):
-            kwargs = {}
+            kwargs: dict[str, Any] = {}
             kwargs["line"] = {}
 
             if color:
@@ -827,8 +856,11 @@ class ShockwaveDrawer:
                 ),
             )
 
+        def polygon_plotter():
+            pass
+
         max_pos, max_time, min_pos = self._create_figure(
-            line_plotter, num_trajectories, with_trajectories
+            line_plotter, polygon_plotter, num_trajectories, with_trajectories, with_polygons
         )
 
         fig.update_layout(
@@ -849,8 +881,6 @@ class ShockwaveDrawer:
         min_position: float,
         min_time: float = -PLOT_THRESHOLD_OFFSET,
     ) -> list[Polygon]:
-        self.polygons = []
-
         graph: collections.defaultdict[dtPoint, set[dtPoint]] = collections.defaultdict(
             lambda: set()
         )
@@ -871,7 +901,9 @@ class ShockwaveDrawer:
             x, y = interface.endpoints
 
             if y.time == float("inf"):
-                y = dtPoint(max_time, interface.get_pos_at_time(max_time))
+                y_pos = interface.get_pos_at_time(max_time)
+                assert y_pos
+                y = dtPoint(max_time, y_pos)
 
             if y != top_right and float_isclose(max_time, y.time):
                 segments.add((y.position, y))
@@ -932,8 +964,8 @@ class ShockwaveDrawer:
                         [neighbor.time - cur.time, neighbor.position - cur.position]
                     )
 
-                    if float_isclose(np.linalg.norm(prev_vec), 0) or float_isclose(
-                        np.linalg.norm(vec), 0
+                    if float_isclose(cast(float, np.linalg.norm(prev_vec)), 0) or float_isclose(
+                        cast(float, np.linalg.norm(vec)), 0
                     ):
                         continue
 

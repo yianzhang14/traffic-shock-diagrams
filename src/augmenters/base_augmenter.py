@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from sortedcontainers import SortedList
+from sortedcontainers import SortedList  # type: ignore
 
 from src.drawer_utils import Interface
 

@@ -1,11 +1,10 @@
 from decimal import Decimal
+from typing import Union
 
 import matplotlib.axes
 import matplotlib.figure
-import shapely as shp
 
-type Axes = matplotlib.axes.Axes
-type Figure = matplotlib.figure.Figure
-type Polygon = shp.geometry.Polygon
+Axes = matplotlib.axes.Axes
+Figure = matplotlib.figure.Figure
 
-type value = float | Decimal
+value = Union[float, Decimal]
