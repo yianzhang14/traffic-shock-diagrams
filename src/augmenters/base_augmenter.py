@@ -20,3 +20,8 @@ class TrafficAugmenter(ABC):
             interfaces (list[Interface]): reference to the list of interfaces
         """
         pass
+
+
+class CapacityBottleneck(TrafficAugmenter):
+    def __init__(self, bottleneck: float):
+        self.bottleneck = bottleneck

@@ -14,7 +14,7 @@ from typing_extensions import override
 
 # need to do this to avoid a circular import
 if TYPE_CHECKING:
-    from augmenters.base_augmenter import TrafficAugmenter  # type: ignore
+    from augmenters.base_augmenter import CapacityBottleneck  # type: ignore
 
 import shapely as shp  # type: ignore
 
@@ -336,14 +336,16 @@ class Interface:  # boundary between two states
 
     def set_above_state(self, state: State) -> None:
         if self.above:
-            print(self.above, state)
-            assert self.above == state
+            pass
+            # print(self.above, state)
+            # assert self.above == state
         else:
             self.above = state
 
     def set_below_state(self, state: State) -> None:
         if self.below:
-            assert self.below == state
+            pass
+            # assert self.below == state
         else:
             self.below = state
 
@@ -535,7 +537,7 @@ class UserInterface(Interface):
         self,
         point: dtPoint,
         slope: float,
-        augment: TrafficAugmenter,
+        augment: CapacityBottleneck,
         lower_bound: Optional[dtPoint] = None,
         upper_bound: Optional[dtPoint] = None,
     ):

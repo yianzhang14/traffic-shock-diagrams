@@ -2,10 +2,10 @@ from sortedcontainers import SortedList  # type: ignore
 from typing_extensions import override
 
 from ..drawer_utils import CapacityEvent, Interface, UserInterface, dtPoint
-from .base_augmenter import TrafficAugmenter
+from .base_augmenter import CapacityBottleneck
 
 
-class LineBottleneck(TrafficAugmenter):
+class LineBottleneck(CapacityBottleneck):
     def __init__(self, start: dtPoint, end: dtPoint, bottleneck_capacity: float):
         """Traffic light constructor.
 
@@ -19,6 +19,8 @@ class LineBottleneck(TrafficAugmenter):
             ValueError: the state must be a valid index of cycle
             ValueError: each cycle of the traffic light must be defined to be blocking or not
         """
+        super().__init__(bottleneck_capacity)
+
         self.start = start  # where the traffic light is
         self.end = end
 

@@ -2,10 +2,10 @@ from sortedcontainers import SortedList  # type: ignore
 from typing_extensions import override
 
 from ..drawer_utils import CapacityEvent, Interface, UserInterface, dtPoint
-from .base_augmenter import TrafficAugmenter
+from .base_augmenter import CapacityBottleneck
 
 
-class TrafficLight(TrafficAugmenter):
+class TrafficLight(CapacityBottleneck):
     """Specialization of augmenter for traffic lights. Traffic light augmenters cause capacity to
     drop to 0 for a specific period of time, followed by the release of that limitation.
     This occurs is a configurable cyclical manner.
@@ -33,6 +33,8 @@ class TrafficLight(TrafficAugmenter):
             ValueError: the state must be a valid index of cycle
             ValueError: each cycle of the traffic light must be defined to be blocking or not
         """
+        super().__init__(0)
+
         self.pos = pos  # where the traffic light is
         self.cycles = cycles  # list of the delays of each of the cycles
 

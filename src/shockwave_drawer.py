@@ -1,4 +1,5 @@
 import collections
+import copy
 import dataclasses
 from typing import Any, Callable, Optional, cast
 
@@ -10,10 +11,11 @@ import numpy as np
 import plotly.graph_objects as go  # type: ignore
 import seaborn as sns  # type: ignore
 import shapely as shp  # type: ignore
-from shapely.geometry import Polygon  # type: ignore
+from shapely.geometry import LineString, Polygon  # type: ignore
+from shapely.ops import split  # type: ignore
 from sortedcontainers import SortedList  # type: ignore
 
-from src.augmenters.base_augmenter import TrafficAugmenter
+from src.augmenters.base_augmenter import CapacityBottleneck
 from src.custom_types import Axes, Figure
 
 from .drawer_utils import (
@@ -43,7 +45,7 @@ class ShockwaveDrawer:
         self,
         diagram: FundamentalDiagram,
         simulation_time: float,
-        augments: list[TrafficAugmenter],
+        augments: list[CapacityBottleneck],
         init_density: float,
     ):
         """Constructor for a ShockwaveDrawer.
@@ -72,7 +74,7 @@ class ShockwaveDrawer:
         # default state given the initial density
         self.default_state = self.diagram.get_state(init_density)
 
-        self.augments: list[TrafficAugmenter] = augments
+        self.augments: list[CapacityBottleneck] = augments
 
     def _setup(self) -> None:
         """This function initializes all the data structures needed to run through the
@@ -87,7 +89,7 @@ class ShockwaveDrawer:
 
         # these map UserInterfaces to the original prior/posterior capacities of a CapacityEvent
         # that was postponed due to being restricted to 0/0 prior/post capacity
-        self.latent_events: dict[UserInterface, tuple[float, float]] = {}
+        self.latent_events: dict[UserInterface, tuple[float, float]] = dict()
 
         # initialize the augments -- add their events to the event queue
         for augment in self.augments:
@@ -214,7 +216,7 @@ class ShockwaveDrawer:
 
             cur = interface.get_pos_at_time(point.time + EPS)
 
-            if cur is None:
+            if cur is None or float_isclose(point.position, cur):
                 continue
 
             if res and float_isclose(scale * (point.position - cur), min_dist):
@@ -270,6 +272,7 @@ class ShockwaveDrawer:
         # if we have an increase in capacity and there is not enough density (queuing)
         # to take advantage of that increase, do nothing -- no interface created
         # this applies to 0 into 0 since posterior and prior both 0
+        print(prior_capacity, posterior_capacity, above, below)
         if (
             posterior_capacity > prior_capacity or float_isclose(posterior_capacity, prior_capacity)
         ) and not self.diagram.state_is_queued(below):
@@ -291,6 +294,8 @@ class ShockwaveDrawer:
                     below,
                     lower_bound=cur.point,
                 )
+
+                print(main_interface, main_interface.above, main_interface.below)
 
                 self._add_interface(main_interface)
 
@@ -441,22 +446,14 @@ class ShockwaveDrawer:
 
             self._add_interface(new_interface)
 
-        for event in truncation_events:
-            if event.right_truncated:
-                below_state = self._resolve_state(cur.point)
-                self._add_interface(
-                    Interface(
-                        cur.point,
-                        below_state.get_slope(),
-                        below,
-                        below_state,
-                        lower_bound=cur.point,
-                        upper_bound=event.user_interface.original_upper_bound,
-                    )
-                )
-                break
-
     def _handle_truncation_event(self, cur: TruncationEvent) -> None:
+        """Handles truncation events -- events involving intersection with an userinterface.
+        The two main considerations are left-sided and right-sided truncations.
+
+        Args:
+            cur (TruncationEvent): the event to handle
+        """
+
         interfaces: list[Interface] = []
 
         for interface in cur.interfaces:
@@ -470,18 +467,16 @@ class ShockwaveDrawer:
         if len(interfaces) == 0:
             return
 
-        # assumption: if we ever have an intersection with an user-generated interface,
-        # this is because the user-generated interface started within an empty state
-        # (the converse where the user-generated interface hit an empty state is impossible
-        # since it would've made an interface below it that would hit the empty state instead)
-        # in this case, we need some custom logic to handle things
-
-        print("actual truncation event")
-
         # if the current interface is a latent event, we process it as such
         if cur.user_interface in self.latent_events:
             if cur.user_interface.has_endpoint(cur.point):
                 return
+
+            for interface in interfaces:
+                if interface == cur.user_interface:
+                    continue
+
+                interface.add_cutoff(upper=cur.point)
             # extract prior/post capacity to inform the capacity event
             prior_cap, post_cap = self.latent_events.pop(cur.user_interface)
             print("converting to capacity event")
@@ -501,19 +496,21 @@ class ShockwaveDrawer:
             # interface -- i.e. this implies that the state above the user-generated interface
             # is empty
             if state_created:
-                for interface in interfaces:
-                    if interface == cur.user_interface:
-                        continue
-
-                    interface.add_cutoff(upper=cur.point)
-
                 # optional: truncate the user-generated interface to actually
                 # start where it is supposed to (where there is flow to manipulate)
                 cur.user_interface.add_cutoff(lower=cur.point)
         elif cur.user_interface.has_valid_states():
             print("handling right truncation event")
-            cur.user_interface.add_cutoff(upper=cur.point)
-            cur.right_truncated = True
+
+            self.latent_events[cur.user_interface] = (-1, cur.user_interface.augment.bottleneck)
+            new_interface = copy.deepcopy(cur.user_interface)
+            self.interfaces.append(new_interface)
+            new_interface.add_cutoff(upper=cur.point)
+            cur.user_interface.add_cutoff(lower=cur.point)
+
+            self._handle_capacity_event(
+                CapacityEvent(cur.point, new_interface, new_interface.augment.bottleneck, -1)
+            )
         else:
             for interface in interfaces:
                 interface.add_cutoff(upper=cur.point)
@@ -689,13 +686,22 @@ class ShockwaveDrawer:
         max_pos: float = -1
         max_time: float = -1
         min_pos = float("inf")
+        max_interface_pos: float = -1
 
         for interface in self.interfaces:
             p1 = interface.endpoints[0]
 
             max_time = max(max_time, p1.time)
 
-        max_time = max(max_time, self.simulation_time) + PLOT_THRESHOLD_OFFSET
+            if interface.is_user_generated():
+                max_interface_pos = max(
+                    max_interface_pos,
+                    interface.endpoints[0].position,
+                    interface.endpoints[1].position,
+                )
+
+        max_interface_pos += 5 * PLOT_THRESHOLD_OFFSET
+        max_time = max(max_time, self.simulation_time) + PLOT_THRESHOLD_OFFSET * 5
 
         for interface in self.interfaces:
             # don't draw interfaces without valid states -- if they don't
@@ -748,79 +754,86 @@ class ShockwaveDrawer:
                     color="black",
                 )
 
-        try:
-            if with_trajectories and backbone == "plt":
-                # gap = self.default_state.density
-                slope = self.default_state.get_slope()
+        if with_trajectories and backbone == "plt":
+            # gap = self.default_state.density
+            slope = self.default_state.get_slope()
 
-                for pos in np.linspace(
-                    -slope * max_time,
-                    max_pos,
-                    num_trajectories,
-                ):
-                    assert isinstance(pos, float)
-                    cur = Trajectory(dtPoint(0, pos + 0.1), slope)
+            for pos in np.linspace(
+                -slope * max_time,
+                max_pos,
+                num_trajectories,
+            ):
+                assert isinstance(pos, float)
+                cur = Trajectory(dtPoint(0, pos + 0.1), slope)
 
-                    while True:
-                        x = self._find_closest_intersection_traj(cur)
-                        next_trajectory: Trajectory | None = None
+                while True:
+                    x = self._find_closest_intersection_traj(cur)
+                    next_trajectory: Trajectory | None = None
 
-                        if x is not None:
-                            intersection, interface = x
-                            assert interface.above
+                    if x is not None:
+                        intersection, interface = x
+                        assert interface.above
 
-                            next_trajectory = Trajectory(
-                                intersection, interface.above.get_slope(), lower_bound=intersection
-                            )
-
-                            # if we have a slope of inf (iff density of state is 0), just
-                            # kill the trajectory -- this occurs if we have an trajectory intersect
-                            # exactly at the point of an interface
-                            if next_trajectory.slope == float("inf"):
-                                break
-
-                            cur.add_cutoff(upper=intersection)
-
-                        p1 = cur.endpoints[0]
-                        p2 = cur.endpoints[1]
-
-                        if p2.time == float("inf"):
-                            p2_pos = cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET)
-                            assert p2_pos
-                            p2 = dtPoint(
-                                max_time + PLOT_THRESHOLD_OFFSET,
-                                p2_pos,
-                            )
-
-                        line_plotter(
-                            p1,
-                            p2,
-                            dotted=False,
-                            color="grey",
-                            alpha=0.8,
-                            linewidth=0.5,
+                        next_trajectory = Trajectory(
+                            intersection, interface.above.get_slope(), lower_bound=intersection
                         )
 
-                        if next_trajectory is not None:
-                            cur = next_trajectory
-                        else:
+                        # if we have a slope of inf (iff density of state is 0), just
+                        # kill the trajectory -- this occurs if we have an trajectory intersect
+                        # exactly at the point of an interface
+                        if next_trajectory.slope == float("inf"):
                             break
-        except Exception as e:
-            print(e)
+
+                        cur.add_cutoff(upper=intersection)
+
+                    p1 = cur.endpoints[0]
+                    p2 = cur.endpoints[1]
+
+                    if p2.time == float("inf"):
+                        p2_pos = cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET)
+                        if p2_pos is None:
+                            break
+                        p2 = dtPoint(
+                            max_time + PLOT_THRESHOLD_OFFSET,
+                            p2_pos,
+                        )
+
+                    line_plotter(
+                        p1,
+                        p2,
+                        dotted=False,
+                        color="grey",
+                        alpha=0.8,
+                        linewidth=0.5,
+                    )
+
+                    if next_trajectory is not None:
+                        cur = next_trajectory
+                    else:
+                        break
 
         min_pos = min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
 
         if with_polygons:
+            line = LineString([(0, max_interface_pos), (max_time, max_interface_pos)])
             polygons = self._resolve_polygons(max_time, max_pos, min_pos)
 
             state_color_space = sns.color_palette("Spectral_r", as_cmap=True)
             assert add_colorbar and add_annotation
 
             for polygon in polygons:
+                pieces = split(polygon, line)
                 midpoint: shp.Point = shp.centroid(polygon)
+                for geom in pieces.geoms:
+                    piece_center: shp.Point = shp.centroid(geom)
+                    if piece_center.y < midpoint.y:
+                        midpoint = piece_center
+
                 below = self._resolve_state(dtPoint(midpoint.x, midpoint.y))
 
-                normalizer = mcolors.Normalize(vmin=0, vmax=self.diagram.jam_density)
+                normalizer = mcolors.TwoSlopeNorm(
+                    self.diagram.capacity_density, vmin=0, vmax=self.diagram.jam_density
+                )
 
                 label = chr(ord("A") + self.idx2)
                 while label in self.state_names.values():
@@ -1041,12 +1054,6 @@ class ShockwaveDrawer:
 
         seen: set[tuple[dtPoint, dtPoint]] = set()
         for point in graph.keys():
-            if (
-                float_isclose(point.time, min_time)
-                or float_isclose(point.position, max_position)
-                or float_isclose(point.position, min_position)
-            ):
-                continue
             stack: collections.deque[dtPoint] = collections.deque([point])
 
             cur = None
