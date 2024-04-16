@@ -544,7 +544,12 @@ class ShockwaveDrawer:
 
         for interface in self.user_interfaces:
             line_plotter(
-                interface.endpoints[0], interface.endpoints[1], alpha=0.5, dotted=False, dashed=True
+                interface.endpoints[0],
+                interface.endpoints[1],
+                alpha=0.5,
+                dotted=False,
+                dashed=True,
+                color="black",
             )
 
         for interface in self.interfaces:
