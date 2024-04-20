@@ -1,7 +1,7 @@
 import collections
 import copy
 import dataclasses
-from typing import Any, Callable, Optional, cast
+from typing import Any, Optional, cast
 
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
@@ -16,7 +16,7 @@ from shapely.ops import split  # type: ignore
 from sortedcontainers import SortedList  # type: ignore
 
 from src.augmenters.base_augmenter import CapacityBottleneck
-from src.custom_types import Axes, Figure
+from src.custom_types import Axes, Figure, FigureResult, GraphLine, GraphPolygon
 
 from .drawer_utils import (
     PLOT_THRESHOLD_OFFSET,
@@ -661,65 +661,68 @@ class ShockwaveDrawer:
         fig, ax = plt.subplots(figsize=(20, 10))
         assert isinstance(ax, Axes)
 
-        def line_plotter(
-            p1: dtPoint,
-            p2: dtPoint,
-            dotted=False,
-            color=None,
-            alpha: Optional[float] = None,
-            linewidth: Optional[float] = None,
-            dashed=False,
-        ):
-            kwargs: dict[str, Any] = {}
-            if dotted:
-                kwargs["marker"] = "o"
-            if color:
-                kwargs["c"] = color
+        figure = self._create_figure(
+            num_trajectories,
+            with_trajectories,
+            with_polygons,
+        )
 
-            if alpha:
-                kwargs["alpha"] = alpha
-            if linewidth:
-                kwargs["linewidth"] = linewidth
-            if dashed:
-                kwargs["linestyle"] = "dashed"
+        normalizer = mcolors.TwoSlopeNorm(
+            self.diagram.capacity_density, vmin=0, vmax=self.diagram.jam_density
+        )
 
-            ax.plot((p1.time, p2.time), (p1.position, p2.position), **kwargs)
+        state_color_space = sns.color_palette("Spectral_r", as_cmap=True)
 
-        def polygon_plotter(polygon: Polygon, color=None, alpha: Optional[float] = None):
-            kwargs = {}
-
-            if alpha:
-                kwargs["alpha"] = alpha
-
-            if color:
-                kwargs["color"] = color
-
-            ax.add_patch(patches.Polygon(polygon.exterior.coords, closed=True, **kwargs))
-
-        def add_colorbar(colorbar):
-            fig.colorbar(colorbar, ax=ax, label="Density gradient")
-
-        def add_annotation(text: str, point: dtPoint):
+        for graph_polygon in figure.polygons:
+            ax.add_patch(
+                patches.Polygon(
+                    graph_polygon.polygon.exterior.coords,
+                    closed=True,
+                    color=state_color_space(normalizer(graph_polygon.state.density)),
+                    alpha=0.5,
+                )
+            )
             ax.annotate(
-                text,
-                xy=dataclasses.astuple(point),
+                graph_polygon.label,
+                dataclasses.astuple(graph_polygon.point),
                 horizontalalignment="center",
                 verticalalignment="center",
             )
 
-        max_pos, max_time, min_pos = self._create_figure(
-            line_plotter,
-            polygon_plotter,
-            num_trajectories,
-            with_trajectories,
-            with_polygons,
-            "plt",
-            add_colorbar=add_colorbar,
-            add_annotation=add_annotation,
-        )
+        for user_interface in figure.user_interfaces:
+            ax.plot(
+                (user_interface.point1.time, user_interface.point2.time),
+                (user_interface.point1.position, user_interface.point2.position),
+                alpha=0.9,
+                linestyle="dashed",
+                c=user_interface.color,
+            )
 
-        ax.set_xbound(-PLOT_THRESHOLD_OFFSET, max_time)
-        ax.set_ybound(min_pos, max_pos)
+        for interface in figure.interfaces:
+            ax.plot(
+                (interface.point1.time, interface.point2.time),
+                (interface.point1.position, interface.point2.position),
+                c=interface.color,
+                marker="o",
+            )
+
+        for trajectory in figure.trajectories:
+            ax.plot(
+                (trajectory.point1.time, trajectory.point2.time),
+                (trajectory.point1.position, trajectory.point2.position),
+                c=trajectory.color,
+                linewidth=0.5,
+                alpha=0.8,
+            )
+
+        scalarmappable = cm.ScalarMappable(norm=normalizer, cmap=state_color_space)
+        scalarmappable.set_array([state.density for state in self.state_names.keys()])
+
+        cb = fig.colorbar(scalarmappable, ax=ax, label="Density scale")
+        cb.set_alpha(0.5)
+
+        ax.set_xbound(figure.min_time, figure.max_time)
+        ax.set_ybound(figure.min_pos, figure.max_pos)
 
         ax.set_title("Shockwave Diagram")
         ax.set_xlabel("Time (seconds)")
@@ -730,17 +733,14 @@ class ShockwaveDrawer:
         return (fig, ax)
 
     def _create_figure(
-        self,
-        line_plotter: Callable,
-        polygon_plotter: Callable,
-        num_trajectories: int,
-        with_trajectories: bool,
-        with_polygons: bool,
-        backbone: str,
-        add_colorbar: Optional[Callable] = None,
-        add_annotation: Optional[Callable] = None,
-    ) -> tuple[float, float, float]:
+        self, num_trajectories: int, with_trajectories: bool, with_polygons: bool
+    ) -> FigureResult:
         color_space = sns.color_palette("tab20", int(len(self.interfaces) ** 0.5) + 10)
+
+        user_interfaces_out: list[GraphLine] = []
+        interfaces_out: list[GraphLine] = []
+        trajectories_out: list[GraphLine] = []
+        polygons_out: list[GraphPolygon] = []
 
         max_pos: float = -1
         max_time: float = -1
@@ -764,13 +764,12 @@ class ShockwaveDrawer:
 
         for interface in self.interfaces:
             if interface.is_user_generated():
-                line_plotter(
-                    cast(UserInterface, interface).original_lower_bound,
-                    cast(UserInterface, interface).original_upper_bound,
-                    alpha=0.9,
-                    dotted=False,
-                    dashed=True,
-                    color="black",
+                user_interfaces_out.append(
+                    GraphLine(
+                        cast(UserInterface, interface).original_lower_bound,
+                        cast(UserInterface, interface).original_upper_bound,
+                        "black",
+                    )
                 )
             # don't draw interfaces without valid states -- if they don't
             # have valid states, they weren't ever processed
@@ -795,7 +794,7 @@ class ShockwaveDrawer:
                     pos,
                 )
 
-            color: str | tuple = "black"
+            color: str | tuple[float] = "black"
 
             if not interface.is_user_generated():
                 assert interface.above and interface.below
@@ -810,7 +809,7 @@ class ShockwaveDrawer:
                     self.colors[tup] = color
 
             if p1 != p2:
-                line_plotter(p1, p2, dotted=True, color=color)
+                interfaces_out.append(GraphLine(p1, p2, color))
 
         if with_trajectories:
             # gap = self.default_state.density
@@ -857,14 +856,7 @@ class ShockwaveDrawer:
                                 p2_pos,
                             )
 
-                        line_plotter(
-                            p1,
-                            p2,
-                            dotted=False,
-                            color="grey",
-                            alpha=0.8,
-                            linewidth=0.5,
-                        )
+                        trajectories_out.append(GraphLine(p1, p2, "grey"))
 
                         if next_trajectory is not None:
                             cur = next_trajectory
@@ -875,14 +867,11 @@ class ShockwaveDrawer:
 
         min_pos = min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
 
-        if with_polygons and backbone == "plt":
+        if with_polygons:
             line = LineString(
                 [(-10 * PLOT_THRESHOLD_OFFSET, max_interface_pos), (max_time, max_interface_pos)]
             )
             polygons = self._resolve_polygons(max_time, max_pos, min_pos)
-
-            state_color_space = sns.color_palette("Spectral_r", as_cmap=True)
-            assert add_colorbar and add_annotation
 
             for polygon in polygons:
                 pieces = split(polygon, line)
@@ -894,11 +883,6 @@ class ShockwaveDrawer:
                         midpoint = piece_center
 
                 below = self._resolve_state(dtPoint(midpoint.x, midpoint.y))
-                print(midpoint, below)
-
-                normalizer = mcolors.TwoSlopeNorm(
-                    self.diagram.capacity_density, vmin=0, vmax=self.diagram.jam_density
-                )
 
                 label = chr(ord("A") + self.idx2)
                 while label in self.state_names.values():
@@ -911,20 +895,20 @@ class ShockwaveDrawer:
                     self.idx2 += 1
                     self.state_names[below] = label
 
-                polygon_plotter(
-                    polygon,
-                    color=state_color_space(normalizer(below.density)),
-                    alpha=0.5,
+                polygons_out.append(
+                    GraphPolygon(polygon, below, dtPoint(midpoint.x, midpoint.y), label)
                 )
 
-                add_annotation(label, dtPoint(midpoint.x, midpoint.y))
-
-            scalarmappable = cm.ScalarMappable(norm=normalizer, cmap=state_color_space)
-            scalarmappable.set_array([state.density for state in self.state_names.keys()])
-
-            add_colorbar(scalarmappable)
-
-        return (max_interface_pos, max_time, min_pos)
+        return FigureResult(
+            max_interface_pos,
+            min_pos,
+            max_time,
+            -PLOT_THRESHOLD_OFFSET,
+            user_interfaces_out,
+            interfaces_out,
+            polygons_out,
+            trajectories_out,
+        )
 
     def create_state_legend(self) -> tuple[Figure, Axes]:
         fig, ax = self.diagram.show()
@@ -1044,13 +1028,53 @@ class ShockwaveDrawer:
         def polygon_plotter():
             pass
 
-        max_pos, max_time, min_pos = self._create_figure(
-            line_plotter, polygon_plotter, num_trajectories, with_trajectories, with_polygons, "px"
+        figure = self._create_figure(
+            num_trajectories,
+            with_trajectories,
+            with_polygons,
         )
 
+        for user_interface in figure.user_interfaces:
+            fig.add_trace(
+                go.Scatter(
+                    x=(user_interface.point1.time, user_interface.point2.time),
+                    y=(user_interface.point1.position, user_interface.point2.position),
+                    opacity=0.9,
+                    line=dict(dash="dash", color="black"),
+                    mode="lines",
+                )
+            )
+
+        for interface in figure.interfaces:
+            print()
+            fig.add_trace(
+                go.Scatter(
+                    x=(interface.point1.time, interface.point2.time),
+                    y=(interface.point1.position, interface.point2.position),
+                    hoverinfo="x+y",
+                    line=dict(
+                        color=interface.color
+                        if isinstance(interface.color, str)
+                        else f"rgb{interface.color}"
+                    ),
+                    mode="markers+lines",
+                )
+            )
+
+        for trajectory in figure.trajectories:
+            fig.add_trace(
+                go.Scatter(
+                    x=(trajectory.point1.time, trajectory.point2.time),
+                    y=(trajectory.point1.position, trajectory.point2.position),
+                    opacity=0.8,
+                    line=dict(color=trajectory.color, width=0.5),
+                    mode="lines",
+                )
+            )
+
         fig.update_layout(
-            xaxis=dict(range=[-PLOT_THRESHOLD_OFFSET, max_time]),
-            yaxis=dict(range=[min_pos, max_pos]),
+            xaxis=dict(range=[figure.min_time, figure.max_time]),
+            yaxis=dict(range=[figure.min_pos, figure.max_pos]),
             plot_bgcolor="white",
             autosize=False,
             width=1200,

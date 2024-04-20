@@ -1,10 +1,43 @@
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Union
 
 import matplotlib.axes
 import matplotlib.figure
+import numpy as np
+from shapely.geometry import LineString, Polygon  # type: ignore
+
+from src.drawer_utils import dtPoint, State
 
 Axes = matplotlib.axes.Axes
 Figure = matplotlib.figure.Figure
 
-value = Union[float, Decimal]
+Value = Union[float, Decimal]
+Color = str | tuple[float]
+
+
+@dataclass
+class GraphLine:
+    point1: dtPoint
+    point2: dtPoint
+    color: Color
+
+
+@dataclass
+class GraphPolygon:
+    polygon: Polygon
+    state: State
+    point: dtPoint
+    label: str
+
+
+@dataclass
+class FigureResult:
+    max_pos: float
+    min_pos: float
+    max_time: float
+    min_time: float
+    user_interfaces: list[GraphLine]
+    interfaces: list[GraphLine]
+    polygons: list[GraphPolygon]
+    trajectories: list[GraphLine]
