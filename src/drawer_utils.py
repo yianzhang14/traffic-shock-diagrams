@@ -143,7 +143,7 @@ class Event(ABC):
             if float_isclose(self.point.position, other.point.position):
                 return self.priority < other.priority
 
-            return self.point.position < other.point.position
+            return self.point.position > other.point.position
 
         return self.point.time < other.point.time
 
