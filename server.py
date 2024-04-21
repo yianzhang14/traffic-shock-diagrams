@@ -1,6 +1,9 @@
-from flask import Flask, Response, jsonify, request, send_file
+from dataclasses import asdict
+
+from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 
+from src.custom_types import GraphPolygon
 from src.fundamental_diagram import FundamentalDiagram
 from src.parser import parse
 from src.shockwave_drawer import ShockwaveDrawer
@@ -39,8 +42,13 @@ def get_diagram() -> Response:
         return Response(f"failed to create shockwave diagram: {str(e)}", 500)
 
     figure = drawer._create_figure(100, with_trajectories=True, with_polygons=True)
+    result = asdict(figure)
 
-    return jsonify(figure)
+    graph_polygon: GraphPolygon
+    for graph_polygon in result["polygons"]:
+        graph_polygon.polygon = list(graph_polygon.polygon.exterior.coords)
+
+    return jsonify(result)
 
 
 if __name__ == "__main__":
