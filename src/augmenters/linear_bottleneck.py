@@ -1,7 +1,8 @@
-from sortedcontainers import SortedList  # type: ignore
 from typing_extensions import override
 
-from ..drawer_utils import CapacityEvent, Interface, UserInterface, dtPoint
+from src.shockwave_drawer import ShockwaveDrawer
+
+from ..drawer_utils import CapacityEvent, UserInterface, dtPoint
 from .base_augmenter import CapacityBottleneck
 
 
@@ -30,7 +31,7 @@ class LineBottleneck(CapacityBottleneck):
         self.bottleneck_capacity = bottleneck_capacity
 
     @override
-    def init(self, _simulation_time: float, events: SortedList, interfaces: list[Interface]):
+    def init(self, drawer: ShockwaveDrawer):
         if self.start.time >= 0:
             cur = UserInterface(
                 self.start,
@@ -39,15 +40,15 @@ class LineBottleneck(CapacityBottleneck):
                 self.start,
                 self.end,
             )
-            interfaces.append(cur)
+            drawer._add_interface(cur)
 
             start_event = CapacityEvent(
                 self.start, cur, posterior_capacity=self.bottleneck_capacity
             )
-            events.add(start_event)
+            drawer.events.add(start_event)
 
             end_event = CapacityEvent(self.end, cur, prior_capacity=self.bottleneck_capacity)
-            events.add(end_event)
+            drawer.events.add(end_event)
 
 
 class HorizontalBottleneck(LineBottleneck):

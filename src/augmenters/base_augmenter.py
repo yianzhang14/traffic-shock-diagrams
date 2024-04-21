@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
 
-from sortedcontainers import SortedList  # type: ignore
-
-from src.drawer_utils import Interface
+from src.shockwave_drawer import ShockwaveDrawer
 
 
 # TODO: fully flesh this out
@@ -10,7 +8,7 @@ class TrafficAugmenter(ABC):
     """Abstract base class of all augmenters of the dt-space."""
 
     @abstractmethod
-    def init(self, simulation_time: float, events: SortedList, interfaces: list[Interface]):
+    def init(self, drawer: ShockwaveDrawer):
         """Initializes an augmenter in the shockwave drawer life cycle. Creates all events the
         augment would generate during the simulation time of the drawer.
 

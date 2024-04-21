@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import collections
 import copy
 import dataclasses
-from typing import Any, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
@@ -15,7 +17,9 @@ from shapely.geometry import LineString, Polygon  # type: ignore
 from shapely.ops import split  # type: ignore
 from sortedcontainers import SortedList  # type: ignore
 
-from src.augmenters.base_augmenter import CapacityBottleneck
+if TYPE_CHECKING:
+    from src.augmenters.base_augmenter import CapacityBottleneck
+
 from src.custom_types import Axes, Figure, FigureResult, GraphLine, GraphPolygon
 
 from .drawer_utils import (
@@ -62,9 +66,6 @@ class ShockwaveDrawer:
         self.diagram = diagram
         self.simulation_time = simulation_time
 
-        # create the event queue -- want to process events in order of increasing time
-        self.events: SortedList[Event] = SortedList()
-
         if not (init_density >= 0 and init_density <= self.diagram.jam_density):
             raise ValueError(
                 "The provided initial density is not valid for the provided fundamental diagram."
@@ -79,6 +80,9 @@ class ShockwaveDrawer:
         """This function initializes all the data structures needed to run through the
         shockwave drawer. If already run through once, this resets all the data structures
         for a correct rerun."""
+        # create the event queue -- want to process events in order of increasing time
+        self.events: SortedList[Event] = SortedList()
+
         # interfaces created throughout the drawer lifetime
         self.interfaces: list[Interface] = []
 
@@ -92,7 +96,10 @@ class ShockwaveDrawer:
 
         # initialize the augments -- add their events to the event queue
         for augment in self.augments:
-            augment.init(self.simulation_time, self.events, self.interfaces)
+            augment.init(self)
+
+        if len(self.intersections) != 0:
+            raise RuntimeError("had intersection between two user interfaces")
 
         self.colors: dict[tuple[State, State], tuple] = dict()
 
@@ -103,6 +110,20 @@ class ShockwaveDrawer:
         self.state_names[self.default_state] = "A"
 
         self.idx1 = self.idx2 = 0
+
+    def _save_state(self, **kwargs) -> None:
+        print("------------------------------------")
+        for key, value in kwargs.items():
+            print(key, ":", value)
+        print("------------------------------------")
+        print("intersections", self.intersections)
+        print("------------------------------------")
+        print("interfaces", self.interfaces)
+        print("------------------------------------")
+        print("events", self.events)
+
+        fig, ax = self.create_figure_plt(with_trajectories=True)
+        fig.savefig("data/debug.png")
 
     def _add_interface(self, interface: Interface):
         """Private function to add an interface to the list of generated interfaces.
@@ -126,9 +147,16 @@ class ShockwaveDrawer:
 
         # find the interface that intersects the closest from the given interface
         for x in self.interfaces:
-            assert not x.equivalent_to(interface)  # basic sanity check -- should never happen
+            # assert not x.equivalent_to(interface)  # basic sanity check -- should never happen
 
-            intersect = interface.intersection(x)
+            # this fails if there is not a well-defined intersection
+            # i.e., the intersection is either at a single point or doesn't exist
+            # no multiple intersections (or infinite intersections)
+            try:
+                intersect = interface.intersection(x)
+            except RuntimeError as e:
+                self._save_state(intersection_assertion=(x, interface))
+                raise e
 
             # ignore overlaps and non-intersecting interfaces
             if intersect is None or interface.has_endpoint(intersect):
@@ -301,7 +329,7 @@ class ShockwaveDrawer:
         if (
             posterior_capacity > prior_capacity or float_isclose(posterior_capacity, prior_capacity)
         ) and not self.diagram.state_is_queued(below):
-            self.latent_events[cur.interface] = (cur.prior_capacity, cur.posterior_capacity)
+            # self.latent_events[cur.interface] = (cur.prior_capacity, cur.posterior_capacity)
             if not float_isclose(above.density, below.density):
                 self._add_interface(
                     Interface(
@@ -516,9 +544,9 @@ class ShockwaveDrawer:
             return
 
         # if the current interface is a latent event, we process it as such
-        if cur.user_interface in self.latent_events:
+        if not cur.user_interface.has_valid_states():
             # extract prior/post capacity to inform the capacity event
-            prior_cap, post_cap = self.latent_events.pop(cur.user_interface)
+            # prior_cap, post_cap = self.latent_events.pop(cur.user_interface)
             print("converting to capacity event")
 
             cur.user_interface.add_cutoff(lower=cur.point)
@@ -528,8 +556,8 @@ class ShockwaveDrawer:
                 CapacityEvent(
                     cur.point,
                     cur.user_interface,
-                    prior_capacity=prior_cap,
-                    posterior_capacity=post_cap,
+                    prior_capacity=-1,
+                    posterior_capacity=cur.user_interface.augment.bottleneck,
                 )
             )
 
@@ -551,10 +579,11 @@ class ShockwaveDrawer:
         if cur.user_interface.has_valid_states():
             print("handling right truncation event")
 
-            self.latent_events[cur.user_interface] = (-1, cur.user_interface.augment.bottleneck)
+            # self.latent_events[cur.user_interface] = (-1, cur.user_interface.augment.bottleneck)
             new_interface = copy.deepcopy(cur.user_interface)
             self.interfaces.append(new_interface)
             cur.user_interface.add_cutoff(lower=cur.point)
+            cur.user_interface.above = cur.user_interface.below = None
 
             state_created = self._handle_intersection_event(
                 IntersectionEvent(cur.point, [new_interface] + cur.interfaces), force=True
@@ -631,7 +660,10 @@ class ShockwaveDrawer:
             # ignore unhandled user-generated interfaces (& possibly filled-in
             # non-user-generated ones, but those do not exist)
 
-            intersection = interface.intersection(cur)
+            try:
+                intersection = interface.intersection(cur)
+            except RuntimeError:
+                continue
 
             if intersection is None or cur.has_endpoint(intersection):
                 continue
@@ -1046,7 +1078,6 @@ class ShockwaveDrawer:
             )
 
         for interface in figure.interfaces:
-            print()
             fig.add_trace(
                 go.Scatter(
                     x=(interface.point1.time, interface.point2.time),

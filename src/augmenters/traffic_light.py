@@ -1,7 +1,8 @@
-from sortedcontainers import SortedList  # type: ignore
 from typing_extensions import override
 
-from ..drawer_utils import CapacityEvent, Interface, UserInterface, dtPoint
+from src.shockwave_drawer import ShockwaveDrawer
+
+from ..drawer_utils import CapacityEvent, UserInterface, dtPoint
 from .base_augmenter import CapacityBottleneck
 
 
@@ -60,24 +61,24 @@ class TrafficLight(CapacityBottleneck):
         TrafficLight.id += 1
 
     @override
-    def init(self, simulation_time: float, events: SortedList, interfaces: list[Interface]):
+    def init(self, drawer: ShockwaveDrawer):
         time = self.delay
         state = self.init_state
 
         # continue adding capacity events to the event queue until we are out of time
-        while time <= simulation_time:
+        while time <= drawer.simulation_time:
             if self.blocking_states[state]:
                 start = dtPoint(time, self.pos)
                 end = dtPoint(time + self.cycles[state], self.pos)
 
                 cur = UserInterface(start, 0, self, start, end)
-                interfaces.append(cur)
+                drawer._add_interface(cur)
 
                 start_event = CapacityEvent(start, cur, posterior_capacity=0)
-                events.add(start_event)
+                drawer.events.add(start_event)
 
                 end_event = CapacityEvent(end, cur, prior_capacity=0)
-                events.add(end_event)
+                drawer.events.add(end_event)
 
             time += self.cycles[state]
             state = (state + 1) % len(self.cycles)
