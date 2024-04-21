@@ -1,4 +1,5 @@
 from dataclasses import asdict
+from typing import Any
 
 from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
@@ -42,11 +43,11 @@ def get_diagram() -> Response:
         return Response(f"failed to create shockwave diagram: {str(e)}", 500)
 
     figure = drawer._create_figure(100, with_trajectories=True, with_polygons=True)
-    result = asdict(figure)
+    result: dict[str, Any] = asdict(figure)
 
-    graph_polygon: GraphPolygon
+    graph_polygon: dict[str, Any]
     for graph_polygon in result["polygons"]:
-        graph_polygon.polygon = list(graph_polygon.polygon.exterior.coords)
+        graph_polygon["polygon"] = list(graph_polygon["polygon"].exterior.coords)
 
     return jsonify(result)
 
