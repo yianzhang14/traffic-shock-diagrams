@@ -24,6 +24,9 @@ def parse(config_str: str) -> list[CapacityBottleneck]:
     config_str = config_str.replace(" ", "")
 
     for line in config_str.split(";"):
+        if len(line) == 0:
+            continue
+
         tokens = line.split(",")
         bottleneck_type = tokens[0]
         args: list[Any] = ast.literal_eval(f"[{','.join((tokens[1:-1]))}]")
