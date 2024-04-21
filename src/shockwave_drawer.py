@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from src.augmenters.base_augmenter import CapacityBottleneck
 
 from src.custom_types import Axes, Figure, FigureResult, GraphLine, GraphPolygon
-from src.timeout import timeout
 
 from .drawer_utils import (
     PLOT_THRESHOLD_OFFSET,
@@ -1137,7 +1136,6 @@ class ShockwaveDrawer:
 
         return fig
 
-    @timeout
     def _resolve_polygons(
         self,
         max_time: float,
@@ -1210,6 +1208,7 @@ class ShockwaveDrawer:
                 if cur is None:
                     continue
 
+                iterations = 0
                 while cur:
                     stack.append(cur)
 
@@ -1247,6 +1246,11 @@ class ShockwaveDrawer:
                     if next_point is None or next_point == point:
                         break
                     cur = next_point
+
+                    iterations += 1
+
+                    if iterations == len(graph) * 2:
+                        return []
 
                 for i in range(len(stack) - 1):
                     seen.add((stack[i], stack[i + 1]))
