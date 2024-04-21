@@ -385,7 +385,7 @@ class Interface:  # boundary between two states
         mid_time: float
         # if either farther endpoints is infinity, just choose the most inclusive one
         if self.endpoints[1].time == float("inf") or other.endpoints[1].time == float("inf"):
-            mid_time = -1
+            mid_time = max(self.endpoints[0].time, other.endpoints[0].time) + 1
         # otherwise do some math to get a point that would be shared iff the intervals overlap
         else:
             mid_time = min(

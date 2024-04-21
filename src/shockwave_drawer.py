@@ -288,7 +288,9 @@ class ShockwaveDrawer:
 
         return self.default_state
 
-    def _handle_capacity_event(self, cur: CapacityEvent) -> bool:
+    def _handle_capacity_event(
+        self, cur: CapacityEvent, above: Optional[State] = None, below: Optional[State] = None
+    ) -> bool:
         """Private function for handling a capacity event. Determines what to do
         using the prior/posterior capacity (adjusted for the current state)
         and the fundamental diagram.
@@ -301,8 +303,10 @@ class ShockwaveDrawer:
         if cur.interface.get_pos_at_time(cur.point.time) is None:
             return False
 
-        above = self._resolve_state(cur.point, below=False)
-        below = self._resolve_state(cur.point, below=True)
+        if not above:
+            above = self._resolve_state(cur.point, below=False)
+        if not below:
+            below = self._resolve_state(cur.point, below=True)
 
         # fig, ax = self.create_figure_plt(with_trajectories=True)
         # fig.savefig(f"data/log_{self.i}.png")
@@ -543,6 +547,12 @@ class ShockwaveDrawer:
         if len(interfaces) == 0:
             return
 
+        for interface in interfaces:
+            if interface == cur.user_interface:
+                continue
+
+            interface.add_cutoff(upper=cur.point)
+
         # if the current interface is a latent event, we process it as such
         if not cur.user_interface.has_valid_states():
             # extract prior/post capacity to inform the capacity event
@@ -551,6 +561,25 @@ class ShockwaveDrawer:
 
             cur.user_interface.add_cutoff(lower=cur.point)
 
+            # what if there are multiple interfaces?
+            max_min_slope = float("-inf")
+            min_max_slope = float("inf")
+            above = None
+            below = None
+            for interface in interfaces:
+                slope = interfaces[0].slope
+                if float_isclose(slope, 0):
+                    above = interface.above
+                    below = interface.below
+                    break
+
+                if slope < 0 and slope > max_min_slope:
+                    max_min_slope = slope
+                    below = interface.above
+                elif slope > 0 and slope < min_max_slope:
+                    min_max_slope = slope
+                    above = interface.below
+
             # handle the capacity event using the information we have
             state_created = self._handle_capacity_event(
                 CapacityEvent(
@@ -558,25 +587,11 @@ class ShockwaveDrawer:
                     cur.user_interface,
                     prior_capacity=-1,
                     posterior_capacity=cur.user_interface.augment.bottleneck,
-                )
+                ),
+                above=above,
+                below=below,
             )
-
-            if state_created:
-                for interface in interfaces:
-                    if interface == cur.user_interface:
-                        continue
-
-                    interface.add_cutoff(upper=cur.point)
-
-            return
-
-        for interface in interfaces:
-            if interface == cur.user_interface:
-                continue
-
-            interface.add_cutoff(upper=cur.point)
-
-        if cur.user_interface.has_valid_states():
+        elif cur.user_interface.has_valid_states():
             print("handling right truncation event")
 
             # self.latent_events[cur.user_interface] = (-1, cur.user_interface.augment.bottleneck)
