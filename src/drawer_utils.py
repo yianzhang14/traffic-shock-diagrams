@@ -14,7 +14,7 @@ from typing_extensions import override
 
 # need to do this to avoid a circular import
 if TYPE_CHECKING:
-    from augmenters.base_augmenter import CapacityBottleneck  # type: ignore
+    from src.augmenters.base_augmenter import CapacityBottleneck
 
 import shapely as shp  # type: ignore
 
@@ -348,8 +348,11 @@ class Interface:  # boundary between two states
         else:
             self.below = state
 
+    def __repr__(self) -> str:
+        return self.__str__()
+
     def __str__(self) -> str:
-        return f"Interface({self.point}, {self.slope}, {self.endpoints})"
+        return f"Interface(slope={self.slope}, endpoints={self.endpoints})"
 
     def has_endpoint(self, point: dtPoint) -> bool:
         """Function to determine whether an interface contains a given point
@@ -377,7 +380,34 @@ class Interface:  # boundary between two states
         Returns:
             Optional[dtPoint]: the point of intersection, if it exists (None if it doesn't)
         """
-        if float_isclose(self.slope, other.slope):
+
+        # resolve a good time that would be a common point if the lines are overlapping
+        mid_time: float
+        # if either farther endpoints is infinity, just choose the most inclusive one
+        if self.endpoints[1].time == float("inf") or other.endpoints[1].time == float("inf"):
+            mid_time = -1
+        # otherwise do some math to get a point that would be shared iff the intervals overlap
+        else:
+            mid_time = min(
+                (
+                    abs(self.endpoints[1].time - other.endpoints[0].time),
+                    (self.endpoints[1].time + other.endpoints[0].time) / 2,
+                ),
+                (
+                    abs(self.endpoints[0].time - other.endpoints[1].time),
+                    (self.endpoints[0].time + other.endpoints[1].time) / 2,
+                ),
+                key=lambda x: x[0],
+            )[1]
+
+        pos1 = self.get_pos_at_time(mid_time)
+        pos2 = other.get_pos_at_time(mid_time)
+
+        if float_isclose(self.slope, other.slope) and pos1 and pos2 and float_isclose(pos1, pos2):
+            raise RuntimeError(
+                "checking intersection between identical interfaces -- i.e., equivalent interfaces"
+            )
+        elif float_isclose(self.slope, other.slope):
             return None
 
         # this is the formula for the intersection point (x)
