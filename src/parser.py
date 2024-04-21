@@ -21,9 +21,10 @@ def convert_to_dtpoint(args: list[Any]) -> None:
 
 def parse(config_str: str) -> list[CapacityBottleneck]:
     augments: list[CapacityBottleneck] = []
+    config_str = config_str.replace(" ", "")
 
-    for line in config_str.split("\n"):
-        tokens = line.replace(" ", "").split(",")
+    for line in config_str.split(";"):
+        tokens = line.split(",")
         bottleneck_type = tokens[0]
         args: list[Any] = ast.literal_eval(f"[{','.join((tokens[1:-1]))}]")
         kwargs: dict[str, Any] = ast.literal_eval(tokens[-1])
