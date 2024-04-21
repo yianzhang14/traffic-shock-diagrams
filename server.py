@@ -1,8 +1,6 @@
 from flask import Flask, Response, jsonify, request, send_file
 from flask_cors import CORS
 
-from src.timeout import timeout
-from src.augmenters.base_augmenter import CapacityBottleneck
 from src.fundamental_diagram import FundamentalDiagram
 from src.parser import parse
 from src.shockwave_drawer import ShockwaveDrawer
