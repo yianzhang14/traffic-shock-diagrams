@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from src.augmenters.base_augmenter import CapacityBottleneck
 
 from src.custom_types import Axes, Figure, FigureResult, GraphLine, GraphPolygon
+from src.timeout import timeout
 
 from .drawer_utils import (
     PLOT_THRESHOLD_OFFSET,
@@ -915,10 +916,23 @@ class ShockwaveDrawer:
         min_pos = min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
 
         if with_polygons:
+            try:
+                polygons = self._resolve_polygons(max_time, max_pos, min_pos)
+            except TimeoutError:
+                return FigureResult(
+                    max_interface_pos,
+                    min_pos,
+                    max_time,
+                    -PLOT_THRESHOLD_OFFSET,
+                    user_interfaces_out,
+                    interfaces_out,
+                    polygons_out,
+                    trajectories_out,
+                )
+
             line = LineString(
                 [(-10 * PLOT_THRESHOLD_OFFSET, max_interface_pos), (max_time, max_interface_pos)]
             )
-            polygons = self._resolve_polygons(max_time, max_pos, min_pos)
 
             for polygon in polygons:
                 pieces = split(polygon, line)
@@ -1016,9 +1030,7 @@ class ShockwaveDrawer:
 
         return fig, ax
 
-    def create_figure_px(
-        self, with_trajectories=False, num_trajectories: int = 100, with_polygons=False
-    ) -> go.Figure:
+    def create_figure_px(self, with_trajectories=False, num_trajectories: int = 100) -> go.Figure:
         """This function generates a plotly figure showing the fundamental digram,
         using the currently generated interfaces stored in self.interfaces.
 
@@ -1075,11 +1087,7 @@ class ShockwaveDrawer:
         def polygon_plotter():
             pass
 
-        figure = self._create_figure(
-            num_trajectories,
-            with_trajectories,
-            with_polygons,
-        )
+        figure = self._create_figure(num_trajectories, with_trajectories, False)
 
         for user_interface in figure.user_interfaces:
             fig.add_trace(
@@ -1129,6 +1137,7 @@ class ShockwaveDrawer:
 
         return fig
 
+    @timeout
     def _resolve_polygons(
         self,
         max_time: float,
