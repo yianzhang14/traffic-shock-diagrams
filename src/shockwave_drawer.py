@@ -20,7 +20,15 @@ from sortedcontainers import SortedList  # type: ignore
 if TYPE_CHECKING:
     from src.augmenters.base_augmenter import CapacityBottleneck
 
-from src.custom_types import Axes, Color, Figure, FigureResult, GraphLine, GraphPolygon
+from src.custom_types import (
+    Axes,
+    Color,
+    Figure,
+    FigureResult,
+    GraphInterface,
+    GraphLine,
+    GraphPolygon,
+)
 
 from .drawer_utils import (
     PLOT_THRESHOLD_OFFSET,
@@ -38,8 +46,8 @@ from .drawer_utils import (
 )
 from .fundamental_diagram import FundamentalDiagram
 
-BLACK = (0.0, 0.0, 0.0)
-GREY = (0.5, 0.5, 0.5)
+BLACK: Color = (0.0, 0.0, 0.0)
+GREY: Color = (0.5, 0.5, 0.5)
 
 
 class ShockwaveDrawer:
@@ -788,7 +796,7 @@ class ShockwaveDrawer:
         color_space = sns.color_palette("tab20", int(len(self.interfaces) ** 0.5) + 10)
 
         user_interfaces_out: list[GraphLine] = []
-        interfaces_out: list[GraphLine] = []
+        interfaces_out: list[GraphInterface] = []
         trajectories_out: list[GraphLine] = []
         polygons_out: list[GraphPolygon] = []
 
@@ -859,7 +867,9 @@ class ShockwaveDrawer:
                     self.colors[tup] = color
 
             if p1 != p2:
-                interfaces_out.append(GraphLine(p1, p2, color))
+                interfaces_out.append(
+                    GraphInterface(p1, p2, color, interface.above, interface.below)
+                )
 
         if with_trajectories:
             # gap = self.default_state.density

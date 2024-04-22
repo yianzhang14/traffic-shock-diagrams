@@ -6,7 +6,7 @@ import matplotlib.axes
 import matplotlib.figure
 from shapely.geometry import Polygon  # type: ignore
 
-from src.drawer_utils import State, dtPoint
+from src.drawer_utils import Interface, State, dtPoint
 
 Axes = matplotlib.axes.Axes
 Figure = matplotlib.figure.Figure
@@ -20,6 +20,12 @@ class GraphLine:
     point1: dtPoint
     point2: dtPoint
     color: Color
+
+
+@dataclass
+class GraphInterface(GraphLine):
+    above: State | None
+    below: State | None
 
 
 @dataclass
@@ -37,6 +43,6 @@ class FigureResult:
     max_time: float
     min_time: float
     user_interfaces: list[GraphLine]
-    interfaces: list[GraphLine]
+    interfaces: list[GraphInterface]
     polygons: list[GraphPolygon]
     trajectories: list[GraphLine]
