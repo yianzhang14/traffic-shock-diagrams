@@ -403,7 +403,9 @@ class ShockwaveDrawer:
                 cur.interface.set_below_state(below)
 
             # the byproduct of the event -- for conservation of cars
-            byproduct_interface_state = self.diagram.get_state_by_flow(posterior_capacity, True)
+            byproduct_interface_state = self.diagram.get_state_by_flow(
+                posterior_capacity, left=True
+            )
 
             # if we don't have a state difference here, there is no interface created
             # consider a traffic light with empty state already above
@@ -573,8 +575,8 @@ class ShockwaveDrawer:
             cur.user_interface.add_cutoff(lower=cur.point)
 
             # what if there are multiple interfaces?
-            max_min_slope = float("-inf")
-            min_max_slope = float("inf")
+            min_slope = float("inf")
+            max_slope = float("-inf")
             above = None
             below = None
             for interface in interfaces:
@@ -584,11 +586,11 @@ class ShockwaveDrawer:
                     below = interface.below
                     break
 
-                if slope < 0 and slope > max_min_slope:
-                    max_min_slope = slope
+                if slope < 0 and slope < min_slope:
+                    min_slope = slope
                     above = interface.above
-                elif slope > 0 and slope < min_max_slope:
-                    min_max_slope = slope
+                elif slope > 0 and slope > max_slope:
+                    max_slope = slope
                     below = interface.below
 
             # handle the capacity event using the information we have
