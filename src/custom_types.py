@@ -6,7 +6,7 @@ import matplotlib.axes
 import matplotlib.figure
 from shapely.geometry import Polygon  # type: ignore
 
-from src.drawer_utils import Interface, State, dtPoint
+from src.drawer_utils import State, dtPoint
 
 Axes = matplotlib.axes.Axes
 Figure = matplotlib.figure.Figure

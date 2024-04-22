@@ -13,7 +13,13 @@ class FundamentalDiagram:
     with useful helper functions for setting up/running through the shockwave drawer scenario.
     """
 
-    def __init__(self, freeflow_speed: float, jam_density: float, traffic_wave_speed: float, init_density: float):
+    def __init__(
+        self,
+        freeflow_speed: float,
+        jam_density: float,
+        traffic_wave_speed: float,
+        init_density: float,
+    ):
         """Constructor of a fundamental diagram.
 
         Args:

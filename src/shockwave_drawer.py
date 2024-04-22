@@ -290,6 +290,7 @@ class ShockwaveDrawer:
         result = set()
         for interface in self.interfaces:
             if interface.has_valid_states():
+                assert interface.above and interface.below
                 result.add(interface.above)
                 result.add(interface.below)
 
@@ -997,7 +998,7 @@ class ShockwaveDrawer:
                 zorder=2,
             )
             ax.annotate(
-                self.state_names[state],
+                self.diagram.get_label_for_density(state.density),
                 xy=(state.density + 0.15, state.flow),
                 horizontalalignment="center",
                 verticalalignment="center",

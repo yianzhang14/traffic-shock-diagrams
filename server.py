@@ -40,8 +40,8 @@ def get_diagram() -> Response:
 
     if "augment-info" not in body:
         return Response("need to provide augment-info field to configure augments", 400)
-    # TODO: add max-time, max-pos, num_trajectories, with_polygons,
-    # and with_trajectories as parameters
+    # TODO: add with_polygons, and with_trajectories as parameters
+    # TODO: add pydantic for argument parsing
     augment_str: str = body["augment-info"]
 
     max_time: float | None = None
@@ -63,12 +63,21 @@ def get_diagram() -> Response:
         print(e)
         return Response(f"failed to create shockwave diagram: {str(e)}", 500)
 
-    figure = drawer._create_figure(100, with_trajectories=True, with_polygons=True, set_max_time=max_time, set_max_pos=max_pos)
+    figure = drawer._create_figure(
+        100, with_trajectories=True, with_polygons=True, set_max_time=max_time, set_max_pos=max_pos
+    )
     result: dict[str, Any] = asdict(figure)
 
     graph_polygon: dict[str, Any]
     for graph_polygon in result["polygons"]:
         graph_polygon["polygon"] = list(graph_polygon["polygon"].exterior.coords)
+
+    for trajectory in result["trajectories"]:
+        del trajectory["color"]
+    for interface in result["interfaces"]:
+        del interface["color"]
+    for interface in result["user_interfaces"]:
+        del interface["color"]
 
     return jsonify(result)
 
