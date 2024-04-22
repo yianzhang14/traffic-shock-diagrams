@@ -242,8 +242,6 @@ class State:
     density: float
     flow: float
 
-    id: int = field(default_factory=count().__next__, init=False)  # unique id
-
     def get_interface_slope(self, other: State) -> float:
         """Gets the slope between this state and another state. Used for determining the
         slope of an interface in the dt-space between these two states.
