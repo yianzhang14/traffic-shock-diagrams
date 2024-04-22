@@ -43,15 +43,15 @@ def certbot():
 class DiagramPostBody(BaseModel):
     augment_info: str
 
-    with_polygons: Optional[bool]
-    num_trajectories: Optional[int]
-    with_trajectories: Optional[bool]
+    with_polygons: Optional[bool] = None
+    num_trajectories: Optional[int] = None
+    with_trajectories: Optional[bool] = None
 
-    max_time: Optional[float]
-    max_pos: Optional[float]
+    max_time: Optional[float] = None
+    max_pos: Optional[float] = None
 
-    settings: Optional[DiagramSettings]
-    simulation_time: Optional[float]
+    settings: Optional[DiagramSettings] = None
+    simulation_time: Optional[float] = None
 
 
 @app.route("/diagram", methods=["POST"])
