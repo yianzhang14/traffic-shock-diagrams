@@ -57,7 +57,7 @@ def get_diagram() -> Response:
         return Response(f"badly formed augment-info string: {str(e)}", status=400)
 
     try:
-        drawer = ShockwaveDrawer(SETTINGS, SIMULATION_TIME, augments, INIT_DENSITY)
+        drawer = ShockwaveDrawer(SETTINGS, SIMULATION_TIME, augments)
         drawer.run()
     except Exception as e:
         print(e)
