@@ -20,7 +20,7 @@ from sortedcontainers import SortedList  # type: ignore
 if TYPE_CHECKING:
     from src.augmenters.base_augmenter import CapacityBottleneck
 
-from src.custom_types import Axes, Figure, FigureResult, GraphLine, GraphPolygon
+from src.custom_types import Axes, Color, Figure, FigureResult, GraphLine, GraphPolygon
 
 from .drawer_utils import (
     PLOT_THRESHOLD_OFFSET,
@@ -37,6 +37,9 @@ from .drawer_utils import (
     float_isclose,
 )
 from .fundamental_diagram import FundamentalDiagram
+
+BLACK = (0.0, 0.0, 0.0)
+GREY = (0.5, 0.5, 0.5)
 
 
 class ShockwaveDrawer:
@@ -101,7 +104,7 @@ class ShockwaveDrawer:
         if len(self.intersections) != 0:
             raise RuntimeError("had intersection between two user interfaces")
 
-        self.colors: dict[tuple[State, State], tuple] = dict()
+        self.colors: dict[tuple[State, State], Color] = dict()
 
         self.state_names: dict[State, str] = dict()
         self.state_names[self.diagram.get_empty_state()] = "E"
@@ -815,7 +818,7 @@ class ShockwaveDrawer:
                     GraphLine(
                         cast(UserInterface, interface).original_lower_bound,
                         cast(UserInterface, interface).original_upper_bound,
-                        "black",
+                        BLACK,
                     )
                 )
             # don't draw interfaces without valid states -- if they don't
@@ -841,7 +844,7 @@ class ShockwaveDrawer:
                     pos,
                 )
 
-            color: str | tuple[float] = "black"
+            color: Color = BLACK
 
             if not interface.is_user_generated():
                 assert interface.above and interface.below
@@ -903,7 +906,7 @@ class ShockwaveDrawer:
                                 p2_pos,
                             )
 
-                        trajectories_out.append(GraphLine(p1, p2, "grey"))
+                        trajectories_out.append(GraphLine(p1, p2, GREY))
 
                         if next_trajectory is not None:
                             cur = next_trajectory

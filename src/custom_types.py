@@ -4,16 +4,15 @@ from typing import Union
 
 import matplotlib.axes
 import matplotlib.figure
-import numpy as np
-from shapely.geometry import LineString, Polygon  # type: ignore
+from shapely.geometry import Polygon  # type: ignore
 
-from src.drawer_utils import dtPoint, State
+from src.drawer_utils import State, dtPoint
 
 Axes = matplotlib.axes.Axes
 Figure = matplotlib.figure.Figure
 
 Value = Union[float, Decimal]
-Color = str | tuple[float]
+Color = tuple[float, float, float]
 
 
 @dataclass
