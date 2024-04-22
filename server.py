@@ -4,7 +4,6 @@ from typing import Any
 from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 
-from src.custom_types import GraphPolygon
 from src.fundamental_diagram import FundamentalDiagram
 from src.parser import parse
 from src.shockwave_drawer import ShockwaveDrawer
@@ -20,6 +19,19 @@ INIT_DENSITY = 1.0
 @app.route("/")
 def home():
     return "hello world"
+
+
+@app.route("/parameters", methods=["GET"])
+def get_parameters():
+    result = {
+        "freeflow-speed": SETTINGS.freeflow_speed,
+        "jam-density": SETTINGS.jam_density,
+        "traffic-wave-speed": SETTINGS.trafficwave_speed,
+        "init-density": INIT_DENSITY,
+        "simulation-time": SIMULATION_TIME,
+    }
+
+    return jsonify(result)
 
 
 @app.route("/diagram", methods=["POST"])
