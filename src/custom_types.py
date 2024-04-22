@@ -45,4 +45,4 @@ class FigureResult:
     user_interfaces: list[GraphLine]
     interfaces: list[GraphInterface]
     polygons: list[GraphPolygon]
-    trajectories: list[GraphLine]
+    trajectories: list[list[GraphLine]]

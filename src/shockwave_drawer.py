@@ -764,13 +764,14 @@ class ShockwaveDrawer:
             )
 
         for trajectory in figure.trajectories:
-            ax.plot(
-                (trajectory.point1.time, trajectory.point2.time),
-                (trajectory.point1.position, trajectory.point2.position),
-                c=trajectory.color,
-                linewidth=0.5,
-                alpha=0.8,
-            )
+            for line in trajectory:
+                ax.plot(
+                    (line.point1.time, line.point2.time),
+                    (line.point1.position, line.point2.position),
+                    c=line.color,
+                    linewidth=0.5,
+                    alpha=0.8,
+                )
 
         scalarmappable = cm.ScalarMappable(norm=normalizer, cmap=state_color_space)
         scalarmappable.set_array([state.density for state in self._get_states()])
@@ -801,7 +802,7 @@ class ShockwaveDrawer:
 
         user_interfaces_out: list[GraphLine] = []
         interfaces_out: list[GraphInterface] = []
-        trajectories_out: list[GraphLine] = []
+        trajectories_out: list[list[GraphLine]] = []
         polygons_out: list[GraphPolygon] = []
 
         max_pos: float = -1
@@ -890,6 +891,8 @@ class ShockwaveDrawer:
                 max_pos,
                 num_trajectories,
             ):
+                cur_trajectories: list[GraphLine] = []
+
                 try:
                     assert isinstance(pos, float)
                     cur = Trajectory(dtPoint(0, pos + 0.1), slope)
@@ -926,7 +929,7 @@ class ShockwaveDrawer:
                                 p2_pos,
                             )
 
-                        trajectories_out.append(GraphLine(p1, p2, GREY))
+                        cur_trajectories.append(GraphLine(p1, p2, GREY))
 
                         if next_trajectory is not None:
                             cur = next_trajectory
@@ -934,6 +937,8 @@ class ShockwaveDrawer:
                             break
                 except Exception as e:
                     print(e)
+
+                trajectories_out.append(cur_trajectories)
 
         min_pos = min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
 
@@ -1129,15 +1134,16 @@ class ShockwaveDrawer:
             )
 
         for trajectory in figure.trajectories:
-            fig.add_trace(
-                go.Scatter(
-                    x=(trajectory.point1.time, trajectory.point2.time),
-                    y=(trajectory.point1.position, trajectory.point2.position),
-                    opacity=0.8,
-                    line=dict(color=trajectory.color, width=0.5),
-                    mode="lines",
+            for line in trajectory:
+                fig.add_trace(
+                    go.Scatter(
+                        x=(line.point1.time, line.point2.time),
+                        y=(line.point1.position, line.point2.position),
+                        opacity=0.8,
+                        line=dict(color=line.color, width=0.5),
+                        mode="lines",
+                    )
                 )
-            )
 
         fig.update_layout(
             xaxis=dict(range=[figure.min_time, figure.max_time]),
