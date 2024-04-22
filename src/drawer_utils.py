@@ -7,7 +7,6 @@ from abc import ABC
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import total_ordering
-from itertools import count
 from typing import TYPE_CHECKING, Optional
 
 from typing_extensions import override
@@ -350,7 +349,7 @@ class Interface:  # boundary between two states
         return self.__str__()
 
     def __str__(self) -> str:
-        return f"Interface(slope={self.slope}, endpoints={self.endpoints})"
+        return f"Interface(slope={self.slope}, endpoints={self.endpoints}, above={self.above}, below={self.below})"  # noqa: E501
 
     def has_endpoint(self, point: dtPoint) -> bool:
         """Function to determine whether an interface contains a given point

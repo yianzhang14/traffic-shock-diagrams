@@ -127,7 +127,7 @@ class FundamentalDiagram:
         """
         return State(0, 0)
 
-    def get_state_by_flow(self, flow: float, prev_state: State, flip: bool = False) -> State:
+    def get_state_by_flow(self, flow: float, left: bool = True) -> State:
         """Finds the states associated with a given flow and, by default, returns the valid one.
         The valid state is defined as the one that would have a negative slope with the previous
         state.
@@ -154,15 +154,20 @@ class FundamentalDiagram:
             flow - self.capacity - self.trafficwave_speed * self.capacity_density
         ) / -self.trafficwave_speed
 
-        # assumption: between two organic states, it is impossible for
-        # the differential in flow/density to be in the same direction
-        if not flip and (
-            (flow > prev_state.flow and left_density > prev_state.density)
-            or (flow < prev_state.flow and left_density < prev_state.density)
-        ):
+        if left:
+            return State(left_density, flow)
+        else:
             return State(right_density, flow)
 
-        return State(left_density, flow)
+        # # assumption: between two organic states, it is impossible for
+        # # the differential in flow/density to be in the same direction
+        # if not flip and (
+        #     (flow > prev_state.flow and left_density > prev_state.density)
+        #     or (flow < prev_state.flow and left_density < prev_state.density)
+        # ):
+        #     return State(right_density, flow)
+
+        # return State(left_density, flow)
 
     def state_is_queued(self, state: State) -> bool:
         """Determines whether a state is queued--has density greater than the capacity density.
@@ -180,4 +185,6 @@ class FundamentalDiagram:
         if not (state.density >= 0 and state.density <= self.jam_density):
             raise ValueError("Density of the provided state is invalid")
 
-        return state.density > self.capacity_density
+        return state.density > self.capacity_density and not float_isclose(
+            state.density, self.capacity_density
+        )

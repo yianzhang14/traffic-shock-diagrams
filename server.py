@@ -40,6 +40,7 @@ def get_diagram() -> Response:
 
     if "augment-info" not in body:
         return Response("need to provide augment-info field to configure augments", 400)
+    # TODO: add max-time, max-pos, num_trajectories, with_polygons, and with_trajectories as parameters
     augment_str: str = body["augment-info"]
 
     try:

@@ -343,7 +343,7 @@ class ShockwaveDrawer:
         print(prior_capacity, posterior_capacity, above, below)
         if (
             posterior_capacity > prior_capacity or float_isclose(posterior_capacity, prior_capacity)
-        ) and not self.diagram.state_is_queued(below):
+        ) and (not self.diagram.state_is_queued(below) or above == below):
             # self.latent_events[cur.interface] = (cur.prior_capacity, cur.posterior_capacity)
             if not float_isclose(above.density, below.density):
                 self._add_interface(
@@ -361,7 +361,7 @@ class ShockwaveDrawer:
             state_created = False
 
             # main interface of the event; direct result of the reduction in capacity
-            main_interface_state = self.diagram.get_state_by_flow(posterior_capacity, below)
+            main_interface_state = self.diagram.get_state_by_flow(posterior_capacity, left=False)
 
             # same logic as below, but unsure if this ever happens
             if main_interface_state != below:
@@ -372,6 +372,8 @@ class ShockwaveDrawer:
                     below,
                     lower_bound=cur.point,
                 )
+
+                print(main_interface)
 
                 self._add_interface(main_interface)
 
@@ -397,14 +399,11 @@ class ShockwaveDrawer:
 
                 state_created |= True
 
-                print(main_interface)
             else:
                 cur.interface.set_below_state(below)
 
             # the byproduct of the event -- for conservation of cars
-            byproduct_interface_state = self.diagram.get_state_by_flow(
-                posterior_capacity, below, flip=True
-            )
+            byproduct_interface_state = self.diagram.get_state_by_flow(posterior_capacity, True)
 
             # if we don't have a state difference here, there is no interface created
             # consider a traffic light with empty state already above
@@ -418,6 +417,8 @@ class ShockwaveDrawer:
                     byproduct_interface_state,
                     lower_bound=cur.point,
                 )
+
+                print(byproduct_interface)
 
                 self._add_interface(byproduct_interface)
 
@@ -441,7 +442,6 @@ class ShockwaveDrawer:
 
                 state_created |= True
 
-                print(byproduct_interface)
             else:
                 cur.interface.set_above_state(above)
 
@@ -586,10 +586,10 @@ class ShockwaveDrawer:
 
                 if slope < 0 and slope > max_min_slope:
                     max_min_slope = slope
-                    below = interface.above
+                    above = interface.above
                 elif slope > 0 and slope < min_max_slope:
                     min_max_slope = slope
-                    above = interface.below
+                    below = interface.below
 
             # handle the capacity event using the information we have
             state_created = self._handle_capacity_event(
