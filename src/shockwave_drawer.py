@@ -58,7 +58,6 @@ class ShockwaveDrawer:
     def __init__(
         self,
         diagram: FundamentalDiagram,
-        simulation_time: float,
         augments: list[CapacityBottleneck],
     ):
         """Constructor for a ShockwaveDrawer.
@@ -73,7 +72,6 @@ class ShockwaveDrawer:
             ValueError: The density must be within the bounds of the provided fundamental diagram.
         """
         self.diagram = diagram
-        self.simulation_time = simulation_time
 
         # default state given the initial density
         self.default_state = self.diagram.get_initial_state()
@@ -620,10 +618,11 @@ class ShockwaveDrawer:
 
                 cur.user_interface.add_cutoff(upper=cur.point)
 
-    def run(self, save_images=False) -> None:
+    def run(self, simulation_time: float, save_images=False) -> None:
         """Main function to generate the shockwave diagram given the inputs."""
 
         self.i = 0
+        self.simulation_time = simulation_time
 
         # setup required data structures
         self._setup()

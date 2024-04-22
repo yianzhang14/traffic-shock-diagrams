@@ -1,11 +1,26 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import interpolate  # type: ignore
 
 from src.custom_types import Axes, Figure
 from src.drawer_utils import DIGIT_TOLERANCE, State, float_isclose
+
+
+@dataclass
+class DiagramSettings:
+    freeflow_speed: float
+    jam_density: float
+    traffic_wave_speed: float
+    init_density: float
+
+    def create_fundamental_diagram(self):
+        return FundamentalDiagram(
+            self.freeflow_speed, self.jam_density, self.traffic_wave_speed, self.init_density
+        )
 
 
 class FundamentalDiagram:

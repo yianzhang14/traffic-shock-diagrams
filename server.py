@@ -1,19 +1,20 @@
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Optional
 
-from flask import Flask, Response, jsonify, request
+from flask import Flask, Response, jsonify
 from flask_cors import CORS
+from flask_pydantic import validate  # type: ignore
+from pydantic import BaseModel
 
-from src.fundamental_diagram import FundamentalDiagram
+from src.fundamental_diagram import DiagramSettings, FundamentalDiagram
 from src.parser import parse
 from src.shockwave_drawer import ShockwaveDrawer
 
 app = Flask(__name__)
 cors = CORS(app)
 
-INIT_DENSITY = 1.0
-SETTINGS = FundamentalDiagram(2.0, 5.0, 1.0, INIT_DENSITY)
-SIMULATION_TIME = 20
+DEFAULT_SETTINGS = FundamentalDiagram(2.0, 5.0, 1.0, 1.0)
+DEFAULT_SIMULATION_TIME = 20
 
 
 @app.route("/")
@@ -24,11 +25,11 @@ def home():
 @app.route("/parameters", methods=["GET"])
 def get_parameters():
     result = {
-        "freeflow-speed": SETTINGS.freeflow_speed,
-        "jam-density": SETTINGS.jam_density,
-        "traffic-wave-speed": SETTINGS.trafficwave_speed,
-        "init-density": INIT_DENSITY,
-        "simulation-time": SIMULATION_TIME,
+        "freeflow_speed": DEFAULT_SETTINGS.freeflow_speed,
+        "jam_density": DEFAULT_SETTINGS.jam_density,
+        "traffic_wave_speed": DEFAULT_SETTINGS.trafficwave_speed,
+        "init_density": DEFAULT_SETTINGS.init_density,
+        "simulation_time": DEFAULT_SIMULATION_TIME,
     }
 
     return jsonify(result)
@@ -39,37 +40,46 @@ def certbot():
     return "daU_nzxyw8w0nEjqjRwgvSRBujKzg_In0eSS092dZSI.6wI3KO3aYOlguCK0isl5AGIxEQ8dLDxoLTngTjSOV2Y"
 
 
+class DiagramPostBody(BaseModel):
+    augment_info: str
+
+    with_polygons: Optional[bool]
+    num_trajectories: Optional[int]
+    with_trajectories: Optional[bool]
+
+    max_time: Optional[float]
+    max_pos: Optional[float]
+
+    settings: Optional[DiagramSettings]
+    simulation_time: Optional[float]
+
+
 @app.route("/diagram", methods=["POST"])
-def get_diagram() -> Response:
-    body = request.get_json()
-
-    if "augment-info" not in body:
-        return Response("need to provide augment-info field to configure augments", 400)
-    # TODO: add with_polygons, and with_trajectories as parameters
-    # TODO: add pydantic for argument parsing
-    augment_str: str = body["augment-info"]
-
-    max_time: float | None = None
-    max_pos: float | None = None
-    if "max-time" in body:
-        max_time = float(body["max-time"])
-    if "max-pos" in body:
-        max_pos = float(body["max-pos"])
-
+@validate()
+def get_diagram(body: DiagramPostBody) -> Response:
     try:
-        augments = parse(augment_str)
+        augments = parse(body.augment_info)
     except Exception as e:
         return Response(f"badly formed augment-info string: {str(e)}", status=400)
 
     try:
-        drawer = ShockwaveDrawer(SETTINGS, SIMULATION_TIME, augments)
-        drawer.run()
+        drawer: ShockwaveDrawer
+        if body.settings:
+            drawer = ShockwaveDrawer(body.settings.create_fundamental_diagram(), augments)
+        else:
+            drawer = ShockwaveDrawer(DEFAULT_SETTINGS, augments)
+
+        drawer.run(body.simulation_time or DEFAULT_SIMULATION_TIME)
     except Exception as e:
         print(e)
         return Response(f"failed to create shockwave diagram: {str(e)}", 500)
 
     figure = drawer._create_figure(
-        100, with_trajectories=True, with_polygons=True, set_max_time=max_time, set_max_pos=max_pos
+        body.num_trajectories or 100,
+        with_trajectories=body.with_trajectories or True,
+        with_polygons=body.with_polygons or True,
+        set_max_time=body.max_time,
+        set_max_pos=body.max_pos,
     )
     result: dict[str, Any] = asdict(figure)
 
@@ -77,13 +87,21 @@ def get_diagram() -> Response:
     for graph_polygon in result["polygons"]:
         graph_polygon["polygon"] = list(graph_polygon["polygon"].exterior.coords)
 
-    for trajectory in result["trajectories"]:
+    trajectories: list[list[dict[str, float]]] = []
+    for trajectory in figure.trajectories:
+        cur_trajectory: list[dict[str, float]] = []
         for line in trajectory:
-            del line["color"]
+            cur_trajectory.append(asdict(line.point1))
+        cur_trajectory.append(asdict(trajectory[-1].point2))
+        trajectories.append(cur_trajectory)
+    result["trajectories"] = trajectories
+
     for interface in result["interfaces"]:
         del interface["color"]
     for interface in result["user_interfaces"]:
         del interface["color"]
+
+    result["states"] = list(drawer._get_states())
 
     return jsonify(result)
 
