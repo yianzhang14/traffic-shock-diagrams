@@ -824,9 +824,10 @@ class ShockwaveDrawer:
         max_time = max(max_time, self.simulation_time) + PLOT_THRESHOLD_OFFSET * 5
 
         if set_max_time:
-            max_time = set_max_time
+            max_time = max(set_max_time, max_time)
         if set_max_pos:
-            max_interface_pos = set_max_pos
+            max_interface_pos = max(max_interface_pos, set_max_pos)
+            max_pos = max(max_pos, set_max_pos)
 
         for interface in self.interfaces:
             if interface.is_user_generated():

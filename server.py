@@ -47,9 +47,9 @@ def get_diagram() -> Response:
     max_time: float | None = None
     max_pos: float | None = None
     if "max-time" in body:
-        max_time = body["max-time"]
+        max_time = float(body["max-time"])
     if "max-pos" in body:
-        max_pos = body["max-pos"]
+        max_pos = float(body["max-pos"])
 
     try:
         augments = parse(augment_str)
