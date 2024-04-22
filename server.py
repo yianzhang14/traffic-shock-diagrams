@@ -40,8 +40,16 @@ def get_diagram() -> Response:
 
     if "augment-info" not in body:
         return Response("need to provide augment-info field to configure augments", 400)
-    # TODO: add max-time, max-pos, num_trajectories, with_polygons, and with_trajectories as parameters
+    # TODO: add max-time, max-pos, num_trajectories, with_polygons,
+    # and with_trajectories as parameters
     augment_str: str = body["augment-info"]
+
+    max_time: float | None = None
+    max_pos: float | None = None
+    if "max-time" in body:
+        max_time = body["max-time"]
+    if "max-pos" in body:
+        max_pos = body["max-pos"]
 
     try:
         augments = parse(augment_str)

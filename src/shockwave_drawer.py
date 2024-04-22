@@ -791,7 +791,12 @@ class ShockwaveDrawer:
         return (fig, ax)
 
     def _create_figure(
-        self, num_trajectories: int, with_trajectories: bool, with_polygons: bool
+        self,
+        num_trajectories: int,
+        with_trajectories: bool,
+        with_polygons: bool,
+        set_max_pos: Optional[float] = None,
+        set_max_time: Optional[float] = None,
     ) -> FigureResult:
         color_space = sns.color_palette("tab20", int(len(self.interfaces) ** 0.5) + 10)
 
@@ -819,6 +824,11 @@ class ShockwaveDrawer:
 
         max_interface_pos += 5 * PLOT_THRESHOLD_OFFSET
         max_time = max(max_time, self.simulation_time) + PLOT_THRESHOLD_OFFSET * 5
+
+        if set_max_time:
+            max_time = set_max_time
+        if set_max_pos:
+            max_interface_pos = set_max_pos
 
         for interface in self.interfaces:
             if interface.is_user_generated():
