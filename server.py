@@ -11,9 +11,9 @@ from src.shockwave_drawer import ShockwaveDrawer
 app = Flask(__name__)
 cors = CORS(app)
 
-SETTINGS = FundamentalDiagram(2.0, 5.0, 1.0)
-SIMULATION_TIME = 20
 INIT_DENSITY = 1.0
+SETTINGS = FundamentalDiagram(2.0, 5.0, 1.0, INIT_DENSITY)
+SIMULATION_TIME = 20
 
 
 @app.route("/")
@@ -63,7 +63,7 @@ def get_diagram() -> Response:
         print(e)
         return Response(f"failed to create shockwave diagram: {str(e)}", 500)
 
-    figure = drawer._create_figure(100, with_trajectories=True, with_polygons=True)
+    figure = drawer._create_figure(100, with_trajectories=True, with_polygons=True, set_max_time=max_time, set_max_pos=max_pos)
     result: dict[str, Any] = asdict(figure)
 
     graph_polygon: dict[str, Any]

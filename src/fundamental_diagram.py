@@ -5,7 +5,7 @@ import numpy as np
 from scipy import interpolate  # type: ignore
 
 from src.custom_types import Axes, Figure
-from src.drawer_utils import State, float_isclose
+from src.drawer_utils import DIGIT_TOLERANCE, State, float_isclose
 
 
 class FundamentalDiagram:
@@ -13,7 +13,7 @@ class FundamentalDiagram:
     with useful helper functions for setting up/running through the shockwave drawer scenario.
     """
 
-    def __init__(self, freeflow_speed: float, jam_density: float, traffic_wave_speed: float):
+    def __init__(self, freeflow_speed: float, jam_density: float, traffic_wave_speed: float, init_density: float):
         """Constructor of a fundamental diagram.
 
         Args:
@@ -31,9 +31,15 @@ class FundamentalDiagram:
         if freeflow_speed <= traffic_wave_speed:
             raise ValueError("Freeflow speed must be greater than traffic wave speed.")
 
+        if not (init_density >= 0 and init_density <= jam_density):
+            raise ValueError(
+                "The provided initial density is not valid for the provided fundamental diagram."
+            )
+
         self.freeflow_speed = freeflow_speed
         self.jam_density = jam_density
         self.trafficwave_speed = traffic_wave_speed
+        self.init_density = init_density
 
         # solve system of linear equations for the intersection
         self.capacity_density = (traffic_wave_speed * jam_density) / (
@@ -67,6 +73,9 @@ class FundamentalDiagram:
         ax.set_ylabel("Capacity (veh / s)")
 
         return (fig, ax)
+
+    def get_initial_state(self) -> State:
+        return self.get_state(self.init_density)
 
     def get_state(self, density: float) -> State:
         """Gets the state at a given density.
@@ -188,3 +197,25 @@ class FundamentalDiagram:
         return state.density > self.capacity_density and not float_isclose(
             state.density, self.capacity_density
         )
+
+    def get_label_for_density(self, density: float) -> str:
+        if float_isclose(density, 0):
+            return "E"
+        elif float_isclose(density, self.init_density):
+            return "A"
+        elif float_isclose(density, self.capacity_density):
+            return "M"
+        elif float_isclose(density, self.jam_density):
+            return "J"
+
+        normalized_density = density / self.jam_density
+        n = hash(round(normalized_density, DIGIT_TOLERANCE)) % 703
+
+        result = []
+        while n > 0:
+            n -= 1  # Subtract 1 to account for the offset
+            quotient, remainder = divmod(n, 26)
+            result.append(chr(65 + remainder))
+            n = quotient
+
+        return "".join(result)

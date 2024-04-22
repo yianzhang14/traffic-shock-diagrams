@@ -60,7 +60,6 @@ class ShockwaveDrawer:
         diagram: FundamentalDiagram,
         simulation_time: float,
         augments: list[CapacityBottleneck],
-        init_density: float,
     ):
         """Constructor for a ShockwaveDrawer.
 
@@ -69,7 +68,6 @@ class ShockwaveDrawer:
             simulation_time (float): how long to run the simulation for (seconds)
             augments (list[TrafficLight]): the things generating CapacityEvents that generate
             shockwaves
-            init_density (float): The default density that cars are in at time 0
 
         Raises:
             ValueError: The density must be within the bounds of the provided fundamental diagram.
@@ -77,13 +75,8 @@ class ShockwaveDrawer:
         self.diagram = diagram
         self.simulation_time = simulation_time
 
-        if not (init_density >= 0 and init_density <= self.diagram.jam_density):
-            raise ValueError(
-                "The provided initial density is not valid for the provided fundamental diagram."
-            )
-
         # default state given the initial density
-        self.default_state = self.diagram.get_state(init_density)
+        self.default_state = self.diagram.get_initial_state()
 
         self.augments: list[CapacityBottleneck] = augments
 
@@ -103,7 +96,7 @@ class ShockwaveDrawer:
 
         # these map UserInterfaces to the original prior/posterior capacities of a CapacityEvent
         # that was postponed due to being restricted to 0/0 prior/post capacity
-        self.latent_events: dict[UserInterface, tuple[float, float]] = dict()
+        # self.latent_events: dict[UserInterface, tuple[float, float]] = dict()
 
         # initialize the augments -- add their events to the event queue
         for augment in self.augments:
@@ -114,13 +107,7 @@ class ShockwaveDrawer:
 
         self.colors: dict[tuple[State, State], Color] = dict()
 
-        self.state_names: dict[State, str] = dict()
-        self.state_names[self.diagram.get_empty_state()] = "E"
-        self.state_names[self.diagram.get_max_state()] = "M"
-        self.state_names[self.diagram.get_jam_state()] = "J"
-        self.state_names[self.default_state] = "A"
-
-        self.idx1 = self.idx2 = 0
+        self.idx1 = 0
 
     def _save_state(self, **kwargs) -> None:
         print("------------------------------------")
@@ -279,8 +266,8 @@ class ShockwaveDrawer:
                         not below and interface.slope > res.slope
                     ):
                         res = interface
-                elif (below and interface.slope > res.slope) or (
-                    not below and interface.slope < res.slope
+                elif (below and interface.slope < res.slope) or (
+                    not below and interface.slope > res.slope
                 ):
                     res = interface
             elif scale * (point.position - cur) >= 0 and (
@@ -298,6 +285,15 @@ class ShockwaveDrawer:
             return res.below
 
         return self.default_state
+
+    def _get_states(self) -> set[State]:
+        result = set()
+        for interface in self.interfaces:
+            if interface.has_valid_states():
+                result.add(interface.above)
+                result.add(interface.below)
+
+        return result
 
     def _handle_capacity_event(
         self, cur: CapacityEvent, above: Optional[State] = None, below: Optional[State] = None
@@ -776,7 +772,7 @@ class ShockwaveDrawer:
             )
 
         scalarmappable = cm.ScalarMappable(norm=normalizer, cmap=state_color_space)
-        scalarmappable.set_array([state.density for state in self.state_names.keys()])
+        scalarmappable.set_array([state.density for state in self._get_states()])
 
         cb = fig.colorbar(scalarmappable, ax=ax, label="Density scale")
         cb.set_alpha(0.5)
@@ -800,7 +796,7 @@ class ShockwaveDrawer:
         set_max_pos: Optional[float] = None,
         set_max_time: Optional[float] = None,
     ) -> FigureResult:
-        color_space = sns.color_palette("tab20", int(len(self.interfaces) ** 0.5) + 10)
+        color_space = sns.color_palette("tab20", len(self.interfaces))
 
         user_interfaces_out: list[GraphLine] = []
         interfaces_out: list[GraphInterface] = []
@@ -969,16 +965,7 @@ class ShockwaveDrawer:
 
                 below = self._resolve_state(dtPoint(midpoint.x, midpoint.y))
 
-                label = chr(ord("A") + self.idx2)
-                while label in self.state_names.values():
-                    self.idx2 += 1
-                    label = chr(ord("A") + self.idx2)
-
-                if below in self.state_names:
-                    label = self.state_names[below]
-                else:
-                    self.idx2 += 1
-                    self.state_names[below] = label
+                label = self.diagram.get_label_for_density(below.density)
 
                 polygons_out.append(
                     GraphPolygon(polygon, below, dtPoint(midpoint.x, midpoint.y), label)
@@ -999,7 +986,7 @@ class ShockwaveDrawer:
         fig, ax = self.diagram.show()
         color_space = sns.color_palette("Spectral_r", as_cmap=True)
 
-        for state in self.state_names.keys():
+        for state in self._get_states():
             ax.scatter(
                 state.density,
                 state.flow,
