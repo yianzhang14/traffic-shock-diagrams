@@ -29,8 +29,12 @@ def parse(config_str: str) -> list[CapacityBottleneck]:
 
         tokens = line.split(",")
         bottleneck_type = tokens[0]
-        args: list[Any] = ast.literal_eval(f"[{','.join((tokens[1:-1]))}]")
-        kwargs: dict[str, Any] = ast.literal_eval(tokens[-1])
+        args: list[Any] = ast.literal_eval(f"[{','.join((tokens[1:]))}]")
+        kwargs: dict[str, Any] = {}
+
+        if isinstance(args[-1], dict):
+            kwargs = args[-1]
+            args = args[:-1]
         convert_to_dtpoint(args)
 
         augment: CapacityBottleneck
