@@ -78,7 +78,8 @@ def get_diagram() -> Response:
         graph_polygon["polygon"] = list(graph_polygon["polygon"].exterior.coords)
 
     for trajectory in result["trajectories"]:
-        del trajectory["color"]
+        for line in trajectory:
+            del line["color"]
     for interface in result["interfaces"]:
         del interface["color"]
     for interface in result["user_interfaces"]:
