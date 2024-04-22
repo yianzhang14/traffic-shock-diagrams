@@ -34,6 +34,11 @@ def get_parameters():
     return jsonify(result)
 
 
+@app.route("/.well-known/acme-challenge/daU_nzxyw8w0nEjqjRwgvSRBujKzg_In0eSS092dZSI")
+def certbot():
+    return "daU_nzxyw8w0nEjqjRwgvSRBujKzg_In0eSS092dZSI.6wI3KO3aYOlguCK0isl5AGIxEQ8dLDxoLTngTjSOV2Y"
+
+
 @app.route("/diagram", methods=["POST"])
 def get_diagram() -> Response:
     body = request.get_json()
@@ -83,4 +88,6 @@ def get_diagram() -> Response:
 
 
 if __name__ == "__main__":
-    app.run("0.0.0.0", port=5000, debug=True)
+    app.run(
+        "0.0.0.0", port=5000, debug=True, ssl_context=("certs/fullchain.pem", "certs/privkey.pem")
+    )
