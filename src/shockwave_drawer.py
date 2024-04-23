@@ -699,7 +699,12 @@ class ShockwaveDrawer:
         return res
 
     def create_figure_plt(
-        self, with_trajectories=False, num_trajectories: int = 100, with_polygons=False
+        self,
+        with_trajectories=False,
+        num_trajectories: int = 100,
+        with_polygons=False,
+        max_time: Optional[float] = None,
+        max_pos: Optional[float] = None,
     ) -> tuple[Figure, Axes]:
         """This function generates a matplotlib figure showing the fundamental digram,
         using the currently generated interfaces stored in self.interfaces.
@@ -721,6 +726,8 @@ class ShockwaveDrawer:
             num_trajectories,
             with_trajectories,
             with_polygons,
+            set_max_time=max_time,
+            set_max_pos=max_pos,
         )
 
         normalizer = mcolors.TwoSlopeNorm(

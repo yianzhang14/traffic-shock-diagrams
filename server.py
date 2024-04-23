@@ -108,5 +108,9 @@ def get_diagram(body: DiagramPostBody) -> Response:
 
 if __name__ == "__main__":
     app.run(
-        "0.0.0.0", port=5000, debug=True, ssl_context=("certs/fullchain.pem", "certs/privkey.pem")
+        "0.0.0.0",
+        port=5000,
+        debug=True,
+        ssl_context=("certs/fullchain.pem", "certs/privkey.pem"),
+        threaded=True,
     )
