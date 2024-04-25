@@ -437,6 +437,11 @@ class Interface:  # boundary between two states
         Returns:
             Optional[float]: the position of the interface at the time, if defined; None otherwise
         """
+        if float_isclose(self.endpoints[0].time, time):
+            return self.endpoints[0].position
+        if float_isclose(self.endpoints[1].time, time):
+            return self.endpoints[1].position
+
         if (self.endpoints[1].time < time) or (self.endpoints[0].time > time):
             return None
 

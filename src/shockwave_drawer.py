@@ -1223,6 +1223,8 @@ class ShockwaveDrawer:
                 if cur is None:
                     continue
 
+                stop = False
+
                 iterations = 0
                 while cur:
                     stack.append(cur)
@@ -1265,7 +1267,11 @@ class ShockwaveDrawer:
                     iterations += 1
 
                     if iterations == len(graph) * 2:
-                        return []
+                        stop = True
+                        break
+
+                if stop:
+                    continue
 
                 for i in range(len(stack) - 1):
                     seen.add((stack[i], stack[i + 1]))
