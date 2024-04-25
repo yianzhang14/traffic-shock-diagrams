@@ -328,8 +328,6 @@ class Interface:  # boundary between two states
         self.above = above
         self.below = below
 
-        self.truncation_event: Optional[TruncationEvent] = None
-
     def set_above_state(self, state: State) -> None:
         if self.above:
             pass

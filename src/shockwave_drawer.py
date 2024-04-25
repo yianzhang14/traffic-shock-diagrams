@@ -184,8 +184,6 @@ class ShockwaveDrawer:
             )
             self.events.add(truncation_event)
 
-            interface.truncation_event = truncation_event
-
         # if we have an interesct, generate an IntersectionEvent between these two interfaces
         if min_intersect:
             # update an existing intersection event by adding it to the list of interfaces
@@ -313,10 +311,6 @@ class ShockwaveDrawer:
             above = self._resolve_state(cur.point, below=False)
         if not below:
             below = self._resolve_state(cur.point, below=True)
-
-        # fig, ax = self.create_figure_plt(with_trajectories=True)
-        # fig.savefig(f"data/log_{self.i}.png")
-        # self.i += 1
 
         # get prior/posterior capacity
         prior_capacity = below.flow if cur.prior_capacity == -1 else cur.prior_capacity
@@ -466,17 +460,12 @@ class ShockwaveDrawer:
         # so need to remove the interfaces that would not longer be cutoff here
         interfaces: list[Interface] = []
 
-        truncation_events: list[TruncationEvent] = []
-
         for interface in cur.interfaces:
             assert force or not interface.is_user_generated()
 
             if interface.get_pos_at_time(cur.point.time) is None:
                 continue
             interfaces.append(interface)
-
-            if interface.truncation_event:
-                truncation_events.append(interface.truncation_event)
 
         # don't do anything if there is nothing else to do
         if len(interfaces) <= 1:
