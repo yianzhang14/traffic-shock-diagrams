@@ -91,6 +91,7 @@ class ShockwaveDrawer:
         # use this to maintain the invariant that there should only be one event
         # at any given point -- this handles 3+ interface intersections
         self.intersections: dict[dtPoint, IntersectionEvent] = {}
+        self.truncations: dict[dtPoint, TruncationEvent] = {}
 
         # these map UserInterfaces to the original prior/posterior capacities of a CapacityEvent
         # that was postponed due to being restricted to 0/0 prior/post capacity
@@ -135,11 +136,11 @@ class ShockwaveDrawer:
 
         # only consider one intersection -- the one that is closest in time to it
         # breaks on vertical lines
-        min_intersect: dtPoint | None = None
-        min_interfaces: list[Interface] = []
+        # min_intersect: dtPoint | None = None
+        # min_interfaces: list[Interface] = []
 
-        min_truncation: dtPoint | None = None
-        min_truncation_interfaces: list[Interface] = []
+        # min_truncation: dtPoint | None = None
+        # min_truncation_interfaces: list[Interface] = []
 
         # find the interface that intersects the closest from the given interface
         for x in self.interfaces:
@@ -159,48 +160,59 @@ class ShockwaveDrawer:
                 continue
 
             if x.is_user_generated():
-                if min_truncation and min_truncation == intersect:
-                    min_truncation_interfaces.append(x)
-                elif not min_truncation or intersect.time < min_truncation.time:
-                    min_truncation = intersect
-                    min_truncation_interfaces = [x]
-            else:
-                if min_intersect and min_intersect == intersect:
-                    min_interfaces.append(x)
-                elif not min_intersect or intersect.time < min_intersect.time:
-                    min_intersect = intersect
-                    min_interfaces = [x]
-
-        # add the interface in question to the list since that is part of the  event
-        min_interfaces.append(interface)
-        min_truncation_interfaces.append(interface)
-
-        if min_truncation:
-            assert isinstance(min_truncation_interfaces[0], UserInterface)
-            truncation_event = TruncationEvent(
-                min_truncation,
-                min_truncation_interfaces[0],
-                min_truncation_interfaces[1:],
-            )
-            self.events.add(truncation_event)
-
-        # if we have an interesct, generate an IntersectionEvent between these two interfaces
-        if min_intersect:
-            # update an existing intersection event by adding it to the list of interfaces
-            # can just do address comparison (no __eq__ overwriting) since we are only looking
-            # at existing interfaces (i think -- should check)
-            if min_intersect in self.intersections:
-                event: IntersectionEvent | None = self.intersections.get(min_intersect)
-                assert event is not None
-
-                for interface in min_interfaces:
+                event: Event
+                if intersect in self.truncations:
+                    event = self.truncations[intersect]
                     if interface not in event.interfaces:
                         event.interfaces.append(interface)
-            # create a brand new intersection event
+                else:
+                    event = TruncationEvent(intersect, cast(UserInterface, x), [interface])
+                    self.truncations[intersect] = event
+
+                    self.events.add(event)
             else:
-                event = IntersectionEvent(min_intersect, min_interfaces)
-                self.events.add(event)
-                self.intersections[min_intersect] = event
+                if intersect in self.intersections:
+                    event = self.intersections[intersect]
+                    if x not in event.interfaces:
+                        event.interfaces.append(x)
+                    if interface not in event.interfaces:
+                        event.interfaces.append(interface)
+                else:
+                    event = IntersectionEvent(intersect, [interface, x])
+                    self.intersections[intersect] = event
+
+                    self.events.add(event)
+
+        # # add the interface in question to the list since that is part of the  event
+        # min_interfaces.append(interface)
+        # min_truncation_interfaces.append(interface)
+
+        # if min_truncation:
+        #     assert isinstance(min_truncation_interfaces[0], UserInterface)
+        #     truncation_event = TruncationEvent(
+        #         min_truncation,
+        #         min_truncation_interfaces[0],
+        #         min_truncation_interfaces[1:],
+        #     )
+        #     self.events.add(truncation_event)
+
+        # # if we have an interesct, generate an IntersectionEvent between these two interfaces
+        # if min_intersect:
+        #     # update an existing intersection event by adding it to the list of interfaces
+        #     # can just do address comparison (no __eq__ overwriting) since we are only looking
+        #     # at existing interfaces (i think -- should check)
+        #     if min_intersect in self.intersections:
+        #         event: IntersectionEvent | None = self.intersections.get(min_intersect)
+        #         assert event is not None
+
+        #         for interface in min_interfaces:
+        #             if interface not in event.interfaces:
+        #                 event.interfaces.append(interface)
+        #     # create a brand new intersection event
+        #     else:
+        #         event = IntersectionEvent(min_intersect, min_interfaces)
+        #         self.events.add(event)
+        #         self.intersections[min_intersect] = event
 
         # add the interface to the list
         self.interfaces.append(interface)
@@ -530,6 +542,8 @@ class ShockwaveDrawer:
         Args:
             cur (TruncationEvent): the event to handle
         """
+
+        self.truncations.pop(cur.point)
 
         interfaces: list[Interface] = []
 
