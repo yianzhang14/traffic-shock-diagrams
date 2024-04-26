@@ -49,6 +49,8 @@ from .fundamental_diagram import FundamentalDiagram
 BLACK: Color = (0.0, 0.0, 0.0)
 GREY: Color = (0.5, 0.5, 0.5)
 
+EPS = 1e-2
+
 
 class ShockwaveDrawer:
     """This encapsulates the main logic for creating a situation and determining
@@ -247,35 +249,14 @@ class ShockwaveDrawer:
                 assert interface.is_user_generated()
                 continue
 
-            cur = interface.get_pos_at_time(point.time)
+            cur = interface.get_pos_at_time(point.time + EPS)
 
-            if cur is None:
-                continue
-
-            if float_isclose(point.position, cur):
-                if interface.endpoints[1] != point:
-                    if float_isclose(interface.slope, 0):
-                        continue
-
-                    if below and interface.slope < 0:
-                        if min_dist != 0 or (res and interface.slope > res.slope):
-                            res = interface
-                            min_dist = 0
-                    elif not below and interface.slope > 0:
-                        if min_dist != 0 or (res and interface.slope < res.slope):
-                            res = interface
-                            min_dist = 0
-
+            if cur is None or float_isclose(point.position, cur):
                 continue
 
             if res and float_isclose(scale * (point.position - cur), min_dist):
-                if interface.endpoints[1] == dtPoint(point.time, cur):
-                    if (below and interface.slope < res.slope) or (
-                        not below and interface.slope > res.slope
-                    ):
-                        res = interface
-                elif (below and interface.slope < res.slope) or (
-                    not below and interface.slope > res.slope
+                if (below and interface.slope > res.slope) or (
+                    not below and interface.slope < res.slope
                 ):
                     res = interface
             elif scale * (point.position - cur) >= 0 and (
@@ -326,6 +307,11 @@ class ShockwaveDrawer:
 
         # get prior/posterior capacity
         prior_capacity = below.flow if cur.prior_capacity == -1 else cur.prior_capacity
+
+        # terminate early if this event is no longer valid
+        if prior_capacity != below.flow:
+            return False
+
         posterior_capacity = (
             self.diagram.get_max_state().flow
             if cur.posterior_capacity == -1
@@ -382,7 +368,6 @@ class ShockwaveDrawer:
                 # interface setting may occur, the result would be identical
                 if float_isclose(main_interface.slope, interface_slope):
                     # this means it is exactly the current interface slope -- invalid
-                    print(main_interface)
                     raise RuntimeError("An invalid interface was somehow created")
 
                 assert main_interface.above and main_interface.below
@@ -427,7 +412,6 @@ class ShockwaveDrawer:
 
                 if float_isclose(byproduct_interface.slope, interface_slope):
                     # this means it is exactly the current interface slope -- invalid
-                    print(byproduct_interface)
                     raise RuntimeError("An invalid interface was somehow created")
 
                 assert byproduct_interface.below and byproduct_interface.above
@@ -572,25 +556,6 @@ class ShockwaveDrawer:
 
             cur.user_interface.add_cutoff(lower=cur.point)
 
-            # what if there are multiple interfaces?
-            min_slope = float("inf")
-            max_slope = float("-inf")
-            above = None
-            below = None
-            for interface in interfaces:
-                slope = interfaces[0].slope
-                if float_isclose(slope, 0):
-                    above = interface.above
-                    below = interface.below
-                    break
-
-                if slope < 0 and slope < min_slope:
-                    min_slope = slope
-                    above = interface.above
-                elif slope > 0 and slope > max_slope:
-                    max_slope = slope
-                    below = interface.below
-
             # handle the capacity event using the information we have
             state_created = self._handle_capacity_event(
                 CapacityEvent(
@@ -599,8 +564,6 @@ class ShockwaveDrawer:
                     prior_capacity=-1,
                     posterior_capacity=cur.user_interface.augment.bottleneck,
                 ),
-                above=above,
-                below=below,
             )
         elif cur.user_interface.has_valid_states():
             print("handling right truncation event")
@@ -633,30 +596,54 @@ class ShockwaveDrawer:
         # while there are more events to process
         while self.events:
             # get the first event (first event in time)
-            cur: Event = self.events.pop(0)
+            time: float = self.events[0].point.time
 
-            # support disabling of events -- currently unused
-            if cur.disabled:
-                continue
+            print(f"processing events at time {time}")
 
-            x = len(self.interfaces)
+            pos_queue: SortedList[tuple[int, float, Event]] = SortedList()
 
-            print(f"processing {cur}")
+            while self.events and float_isclose(self.events[0].point.time, time):
+                x: Event = self.events.pop(0)
 
-            # handle the vent based on its type
-            match cur.type:
-                case EventType.capacity:
-                    self._handle_capacity_event(cast(CapacityEvent, cur))
-                case EventType.intersection:
-                    self._handle_intersection_event(cast(IntersectionEvent, cur))
-                case EventType.truncation:
-                    self._handle_truncation_event(cast(TruncationEvent, cur))
+                match x.type:
+                    case EventType.capacity:
+                        pos_queue.add((3, x.point.position, x))
+                    case EventType.intersection:
+                        pos_queue.add((1, x.point.position, x))
+                    case EventType.truncation:
+                        x_trunc = cast(TruncationEvent, x)
 
-            if save_images and len(self.interfaces) != x:
-                fig, ax = self.create_figure_plt(with_trajectories=True)
-                fig.savefig(f"data/{self.i}.png")
+                        if x_trunc.user_interface.has_valid_states():
+                            pos_queue.add((1, x.point.position, x))
+                        else:
+                            pos_queue.add((2, x.point.position, x))
 
-                self.i += 1
+            while pos_queue:
+                event: Event
+                _, _, event = pos_queue.pop(0)
+
+                # support disabling of events -- currently unused
+                if event.disabled:
+                    continue
+
+                prev_num_interfaces = len(self.interfaces)
+
+                print(f"processing {event}")
+
+                # handle the vent based on its type
+                match event.type:
+                    case EventType.capacity:
+                        self._handle_capacity_event(cast(CapacityEvent, event))
+                    case EventType.intersection:
+                        self._handle_intersection_event(cast(IntersectionEvent, event))
+                    case EventType.truncation:
+                        self._handle_truncation_event(cast(TruncationEvent, event))
+
+                if save_images and len(self.interfaces) != prev_num_interfaces:
+                    fig, ax = self.create_figure_plt(with_trajectories=True)
+                    fig.savefig(f"data/{self.i}.png")
+
+                    self.i += 1
 
     # plotting utilities vvv
 

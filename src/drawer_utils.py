@@ -104,9 +104,6 @@ class Event(ABC):
 
     point: dtPoint
     type: EventType
-    # priority to determine order to handle events; want intersection events to be processed first
-    # to handle weird state resolutions
-    priority: int
 
     disabled: bool = field(default=False, kw_only=True)
 
@@ -122,7 +119,7 @@ class Event(ABC):
         """
         if not isinstance(other, Event):
             raise NotImplementedError
-        return self.point == other.point and self.priority == other.priority
+        return self.point == other.point and type(self) == type(other)
 
     def __lt__(self, other: Event) -> bool:
         """Overload of the less than operator for events. One event is less than another
@@ -134,15 +131,6 @@ class Event(ABC):
         Returns:
             bool: whether or not this event is less than the other
         """
-
-        if self == other:
-            return False
-
-        if float_isclose(self.point.time, other.point.time):
-            if float_isclose(self.point.position, other.point.position):
-                return self.priority < other.priority
-
-            return self.point.position > other.point.position
 
         return self.point.time < other.point.time
 
@@ -165,7 +153,7 @@ class IntersectionEvent(Event):
             interfaces (list[Interface]): the interfaces that are intersecting at this event
         """
 
-        super().__init__(point, EventType.intersection, 1)
+        super().__init__(point, EventType.intersection)
 
         self.interfaces = interfaces
 
@@ -199,7 +187,7 @@ class CapacityEvent(Event):
             posterior_capacity (float, optional): the capacity following the event
             (vehicles / second). Must be positive or -1. Defaults to -1.
         """
-        super().__init__(point, EventType.capacity, 2)
+        super().__init__(point, EventType.capacity)
 
         self.interface = interface
 
@@ -222,7 +210,7 @@ class TruncationEvent(Event):
     right_truncated: bool = False
 
     def __init__(self, point: dtPoint, user_interface: UserInterface, interfaces: list):
-        super().__init__(point, EventType.truncation, 1)
+        super().__init__(point, EventType.truncation)
 
         self.interfaces = interfaces
         self.user_interface = user_interface

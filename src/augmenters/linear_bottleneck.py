@@ -2,7 +2,7 @@ from typing_extensions import override
 
 from src.shockwave_drawer import ShockwaveDrawer
 
-from ..drawer_utils import CapacityEvent, UserInterface, dtPoint
+from ..drawer_utils import CapacityEvent, UserInterface, dtPoint, float_isclose
 from .base_augmenter import CapacityBottleneck
 
 
@@ -32,6 +32,9 @@ class LineBottleneck(CapacityBottleneck):
 
     @override
     def init(self, drawer: ShockwaveDrawer):
+        if float_isclose(self.start.time, self.end.time):
+            return
+
         if self.start.time >= 0:
             cur = UserInterface(
                 self.start,
