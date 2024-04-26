@@ -1208,7 +1208,10 @@ class ShockwaveDrawer:
             graph[below].add(above)
             graph[above].add(below)
 
+        print(max_position, min_position)
+
         polygons: list[shp.Polygon] = []
+        full_polygon: shp.Polygon | None = None
 
         seen: set[tuple[dtPoint, dtPoint]] = set()
         for _ in range(2):
@@ -1286,5 +1289,10 @@ class ShockwaveDrawer:
                     polygon.area, (max_time - min_time) * (max_position - min_position)
                 ):
                     polygons.append(polygon)
+                else:
+                    full_polygon = polygon
+
+        if len(polygons) == 0 and full_polygon:
+            polygons.append(full_polygon)
 
         return polygons
