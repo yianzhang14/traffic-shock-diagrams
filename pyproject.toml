@@ -1,4 +1,0 @@
-[tool.ruff]
-
-select = ['E', 'F', 'W', 'A', 'PLC', 'PLE', 'PLW', 'I']
-line-length = 100

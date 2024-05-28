@@ -1,0 +1,17 @@
+{
+  "name": "traffic-shock-diagrams",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.js",
+  "scripts": {
+    "test": "test"
+  },
+  "author": "yianzhang14",
+  "license": "ISC",
+  "dependencies": {
+    "data-structure-typed": "^1.52.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.11"
+  }
+}

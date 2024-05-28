@@ -2,3 +2,5 @@ temp.ipynb
 __pycache__
 data/*
 !.gitkeep
+
+node_modules
