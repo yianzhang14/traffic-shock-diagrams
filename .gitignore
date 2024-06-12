@@ -4,3 +4,6 @@ data/*
 !.gitkeep
 
 node_modules
+production/
+
+test.*

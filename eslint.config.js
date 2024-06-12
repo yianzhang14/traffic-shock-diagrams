@@ -93,6 +93,12 @@ export default [
       "stylistic/object-curly-spacing": [
         "error",
         "always"
+      ],
+      "@typescript-eslint/unbound-method": [
+        "error",
+        {
+          ignoreStatic: true
+        }
       ]
     },
   },

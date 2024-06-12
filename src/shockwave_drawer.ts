@@ -1,10 +1,13 @@
-import { MinPriorityQueue, HashMap, PriorityQueue } from "data-structure-typed";
+import { extract_cycles } from "min-cycles";
+import { Dictionary, Set, PriorityQueue, DefaultDictionary, Stack } from "typescript-collections";
 import assert from "assert";
 import CapacityBottleneck from "./augmenters/base_augmenter";
 import { State, Event, DiagramInterface, dtPoint, IntersectionEvent, TruncationEvent, UserInterface, float_isclose, CapacityEvent, FixedTimeComparable, compareFixedTimeComparable, EventType, Trajectory } from "./drawer_utils";
 import FundamentalDiagram from "./fundamental_diagram";
+import { GraphInterface, GraphLine, GraphPolygon } from "./types";
 
 const EPS = 1e-4;
+const PLOT_THRESHOLD_OFFSET = 1;
 
 /**
  * This class encapsulates all the logic needed to create the shockwave diagram given a fundmental diagram settings object and a list of augments to consider.
@@ -17,11 +20,13 @@ export default class ShockwaveDrawer {
   private default_state: State;
   private augments: CapacityBottleneck[];
 
-  private events = new MinPriorityQueue<Event>(undefined, { "comparator": Event.compareTo });
+  private events = new PriorityQueue<Event>(Event.compareTo);
   private interfaces: DiagramInterface[] = [];
     
-  private intersections = new HashMap<dtPoint, IntersectionEvent>(undefined, { "hashFn": dtPoint.hash });
-  private truncations = new HashMap<dtPoint, TruncationEvent>(undefined, { "hashFn": dtPoint.hash });
+  private intersections = new Dictionary<dtPoint, IntersectionEvent>();
+  private truncations = new Dictionary<dtPoint, TruncationEvent>();
+
+  private simulation_time: number | undefined;
 
 
   /**
@@ -57,7 +62,7 @@ export default class ShockwaveDrawer {
     }
 
     // check for potential user interface intersections (which are not supported)
-    if (this.intersections.size != 0) {
+    if (this.intersections.size() !== 0) {
       throw new EvalError("Had intersection between two user interfaces");
     }
   }
@@ -89,12 +94,12 @@ export default class ShockwaveDrawer {
       // if the intersected interface is user generated, we have a truncation event
       if (x.isUserGenerated()) {
         // either update an existing truncation event or create a new one
-        let event: TruncationEvent | undefined = this.truncations.get(intersect);
+        let event: TruncationEvent | undefined = this.truncations.getValue(intersect);
                 
         if (event === undefined) {
           event = new TruncationEvent(intersect, x as UserInterface, [diagram_interface]);
 
-          this.truncations.set(intersect, event);
+          this.truncations.setValue(intersect, event);
           this.events.add(event);
         } else {
           if (!event.interfaces.includes(diagram_interface)) {
@@ -104,12 +109,12 @@ export default class ShockwaveDrawer {
         // otherwise, we have an intersection event
       } else {
         // either update an existing intersection event or create a new one
-        let event: IntersectionEvent | undefined = this.intersections.get(intersect);
+        let event: IntersectionEvent | undefined = this.intersections.getValue(intersect);
 
         if (event === undefined) {
           event = new IntersectionEvent(intersect, [diagram_interface, x]);
 
-          this.intersections.set(intersect, event);
+          this.intersections.setValue(intersect, event);
           this.events.add(event);
         } else {
           if (!event.interfaces.includes(x)) {
@@ -186,19 +191,16 @@ export default class ShockwaveDrawer {
      * @memberof ShockwaveDrawer
      */
   private getStates(): State[] {
-    const states = new HashMap<State, undefined>(undefined, { "hashFn": State.hash });
+    const states = new Set<State>();
 
     for (const diagram_interface of this.interfaces) {
       if (diagram_interface.hasValidStates()) {
-        states.set(diagram_interface.above!, undefined);
-        states.set(diagram_interface.below!, undefined);
+        states.add(diagram_interface.above!);
+        states.add(diagram_interface.below!);
       }
     }
 
-    const res: State[] = [];
-    for (const state of states.keys()) {
-      res.push(state);
-    }
+    const res: State[] = states.toArray();
 
     return res;
   }
@@ -359,7 +361,7 @@ export default class ShockwaveDrawer {
     console.assert(cur.interfaces.length >= 2, "number of interfaces in an intersection event msut necessarily be greater than or equal to 2");
 
     // check whether or not this event is registered in the intersectionevent log
-    if (!force && !this.intersections.delete(cur.point)) {
+    if (!force && !this.intersections.remove(cur.point)) {
       throw new EvalError("Had an intersection event that was recorded in the intersection dictionary");
     }
 
@@ -403,7 +405,7 @@ export default class ShockwaveDrawer {
       try {
         diagram_interface.addCutoff(undefined, cur.point);
       } catch (err) {
-        console.error("Had error adding cutoff. May be intended.");
+        console.error("Had error adding cutoff. May be intended.", err);
         no_new_interface = true;
       }
     }
@@ -443,7 +445,7 @@ export default class ShockwaveDrawer {
      */
   private handleTruncationEvent(cur: TruncationEvent): void {
     // check for whether or not a truncation event is recorded for this point
-    if (!this.truncations.delete(cur.point)) {
+    if (!this.truncations.remove(cur.point)) {
       throw new EvalError("There was a truncation event that wasn't recorded in the trunction event dictionary/log");
     }
 
@@ -504,16 +506,22 @@ export default class ShockwaveDrawer {
     }
   }
 
-  public run(_simulation_time: number): void {
+  public run(simulation_time: number): void {
     this.setup();
 
-    while (this.events.size != 0) {
+    this.simulation_time = simulation_time;
+
+    while (this.events.size() !== 0) {
       const time: number = this.events.peek()!.point.time;
 
-      const pos_queue = new PriorityQueue<FixedTimeComparable>(undefined, { "comparator": compareFixedTimeComparable });
+      const pos_queue = new PriorityQueue<FixedTimeComparable>(compareFixedTimeComparable);
 
-      while (this.events.size != 0) {
-        const x: Event = this.events.poll()!;
+      while (this.events.size() !== 0 && float_isclose(this.events.peek()!.point.time, time)) {
+        const x: Event| undefined = this.events.peek();
+
+        if (x === undefined) {
+          break;
+        }
 
         let priority = -1;
 
@@ -538,8 +546,8 @@ export default class ShockwaveDrawer {
         pos_queue.add({ "event": x, "priority": priority, "position": x.point.position });
       }
 
-      while (pos_queue.size != 0) {
-        const cur = pos_queue.poll()!;
+      while (pos_queue.size() !== 0) {
+        const cur = pos_queue.peek()!;
         const event = cur.event;
 
         if (event.disabled) {
@@ -597,8 +605,229 @@ export default class ShockwaveDrawer {
     return result;
   }
 
-  public generateFigure(num_trajectories: number, with_trajectories: boolean, with_polygons: boolean, set_max_pos?: number, set_max_time?: number) {
-        
+  public generateFigure(
+    num_trajectories: number, 
+    with_trajectories: boolean, 
+    with_polygons: boolean, 
+    set_max_pos?: number, 
+    set_max_time?: number
+  ) {
+    const user_interfaces_out: GraphLine[] = [];
+    const interfaces_out: GraphInterface[] = [];
+    const trajectories_out: GraphLine[][] = [];
+    const polygons_out: GraphPolygon[] = [];
+
+    let max_pos = -1;
+    let max_time = -1;
+    let min_pos = Infinity;
+    let max_interface_pos = -1;
+
+    for (const diagram_interface of this.interfaces) {
+      const p1: dtPoint = diagram_interface.lower_bound;
+
+      max_time = Math.max(max_time, p1.time);
+
+      if (diagram_interface.isUserGenerated()) {
+        max_interface_pos = Math.max(
+          max_interface_pos,
+          diagram_interface.lower_bound.position,
+          diagram_interface.upper_bound.position
+        );
+      }
+    }
+
+    max_interface_pos += 5 * PLOT_THRESHOLD_OFFSET;
+    max_time = Math.max(max_time, this.simulation_time!) + PLOT_THRESHOLD_OFFSET;
+    
+    if (set_max_time) {
+      max_time = Math.max(set_max_time, max_time);
+    }
+    if (set_max_pos) {
+      max_interface_pos = Math.max(max_interface_pos, set_max_pos);
+      max_pos = Math.max(max_pos, set_max_pos);
+    }
+
+    for (const diagram_interface of this.interfaces) {
+      if (diagram_interface.isUserGenerated()) {
+        user_interfaces_out.push({
+          point1: (diagram_interface as UserInterface).original_lower_bound,
+          point2: (diagram_interface as UserInterface).original_upper_bound
+        });
+      }
+
+      if (!diagram_interface.hasValidStates()) {
+        continue;
+      }
+
+      const p1 = diagram_interface.lower_bound;
+      const p2 = diagram_interface.upper_bound;
+
+      min_pos = Math.min(min_pos, p1.position);
+
+      if (p2.time !== Infinity) {
+        min_pos = Math.min(min_pos, p1.position);
+      }
+
+      if (p2.time === Infinity) {
+        const pos = diagram_interface.getPosAtTime(max_time);
+
+        assert(pos !== undefined);
+        max_pos = Math.max(max_pos, pos);
+      }
+
+      if (!p1.equalTo(p2)) {
+        interfaces_out.push({
+          above: diagram_interface.above,
+          below: diagram_interface.below,
+          point1: p1,
+          point2: p2
+        });
+      }
+    }
+
+    if (with_trajectories) {
+      const slope = this.default_state.getSlope();
+
+      for (const pos of ShockwaveDrawer.linspace(-1 * slope, max_pos, num_trajectories)) {
+        const cur_trajectories: GraphLine[] = [];
+
+        try {
+          let cur = new Trajectory(new dtPoint(0, pos + 0.1), slope);
+
+          while (true) {  // eslint-disable-line no-constant-condition
+            const x = this.findClosestIntersectionPoint_trajectory(cur);
+            let next_trajectory: Trajectory | undefined;
+
+            if (x !== undefined) {
+              const intersection = x[0];
+              const intersecting_interface = x[1];
+
+              assert(intersecting_interface.above);
+
+              next_trajectory = new Trajectory(
+                intersection, intersecting_interface.above.getSlope(), intersection
+              );
+
+              if (next_trajectory.slope === Infinity) {
+                break;
+              }
+
+              cur.addCutoff(undefined, intersection);
+            }
+
+            const p1 = cur.lower_bound;
+            let p2 = cur.upper_bound;
+
+            if (p2.time === Infinity) {
+              const p2_pos = cur.getPosAtTime(max_time + PLOT_THRESHOLD_OFFSET);
+
+              if (p2_pos === undefined) {
+                break;
+              }
+
+              p2 = new dtPoint(max_time + PLOT_THRESHOLD_OFFSET, p2_pos);
+            }
+
+            cur_trajectories.push({
+              point1: p1,
+              point2: p2
+            });
+
+            if (next_trajectory !== undefined) {
+              cur = next_trajectory;
+            } else {
+              break;
+            }
+          }
+        } catch (err) {
+          console.error(err);
+        }
+
+        trajectories_out.push(cur_trajectories);
+      }
+    }
+
+    min_pos = Math.min(min_pos, 0) - PLOT_THRESHOLD_OFFSET;
+
+    if (with_polygons) {
+      ;
+    }
+  }
+
+  private static linspace(start: number, stop: number, num: number): number[] {
+    const step = (stop - start) / num;
+    return Array.from({ length: num }, (_, i) => start + step * i);
+  }
+
+  private resolvePolygons(
+    max_time: number, 
+    max_position: number, 
+    min_position: number, 
+    min_time: number = -PLOT_THRESHOLD_OFFSET
+  ): GraphPolygon[] {
+    const graph = new DefaultDictionary<dtPoint, Set<dtPoint>>(
+      () => { return new Set<dtPoint>(); }
+    );
+    
+    const bottom_left = new dtPoint(min_time, min_position);
+    const top_left = new dtPoint(min_time, max_position);
+    const bottom_right = new dtPoint(max_time, min_position);
+    const top_right = new dtPoint(max_time, max_position);
+
+    const segments: [number, dtPoint][] = [];
+    segments.push([min_position, bottom_right]);
+    segments.push([max_position, top_right]);
+
+    for (const diagram_interface of this.interfaces) {
+      if (!diagram_interface.hasValidStates()) {
+        continue;
+      }
+
+      const x = diagram_interface.lower_bound;
+      let y = diagram_interface.upper_bound;
+
+      if (diagram_interface.upper_bound.time === Infinity) {
+        const y_pos = diagram_interface.getPosAtTime(max_time);
+        assert(y_pos);
+        y = new dtPoint(max_time, y_pos);
+      }
+
+      if (!y.equalTo(top_right) && float_isclose(max_time, y.time)) {
+        segments.push([y.position, y]);
+      }
+
+      graph.getValue(x).add(y);
+      graph.getValue(y).add(x);
+
+      for (const neighbor of graph.getValue(x).toArray()) {
+        graph.getValue(neighbor).add(x);
+      }
+
+      for (const neighbor of graph.getValue(y).toArray()) {
+        graph.getValue(neighbor).add(y);
+      }
+    }
+
+    graph.getValue(bottom_left).add(top_left);
+    graph.getValue(bottom_left).add(bottom_left);
+    graph.getValue(top_left).add(top_right);
+    graph.getValue(top_left).add(bottom_left);
+    graph.getValue(bottom_right).add(bottom_left);
+    graph.getValue(top_right).add(top_left);
+
+    segments.sort((a, b) => { return a[0] - b[0]; });
+
+    for (let i = 0; i < segments.length - 1; i++) {
+      const below = segments[i][1];
+      const above = segments[i + 1][1];
+
+      graph.getValue(below).add(above);
+      graph.getValue(above).add(below);
+    }
+
+    
+
+    return [];
   }
 
 

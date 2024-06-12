@@ -56,8 +56,8 @@ export class dtPoint {
     return (this.position - other.position) / (this.time - other.time);
   }
 
-  public static hash(point: dtPoint): string {
-    return `(${point.time.toFixed(TOLERANCE)}, ${point.position.toFixed(TOLERANCE)})`;
+  public toString(): string {
+    return `(${this.time.toFixed(TOLERANCE)}, ${this.position.toFixed(TOLERANCE)})`;
   }
 
   /**
@@ -304,8 +304,8 @@ export class State {
     return float_isclose(this.density, other.density) && float_isclose(this.flow, other.flow);
   }
 
-  public static hash(state: State): string {
-    return `(${state.density}, ${state.flow})`;
+  public toString(): string {
+    return `(${this.density.toFixed(TOLERANCE)}, ${this.flow.toFixed(TOLERANCE)})`;
   }
 
   public clone(): State {
