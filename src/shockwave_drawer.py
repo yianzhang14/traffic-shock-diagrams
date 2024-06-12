@@ -9,6 +9,7 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
+import networkx as nx  # type: ignore
 import numpy as np
 import plotly.graph_objects as go  # type: ignore
 import seaborn as sns  # type: ignore
@@ -957,6 +958,15 @@ class ShockwaveDrawer:
                 [(-10 * PLOT_THRESHOLD_OFFSET, max_interface_pos), (max_time, max_interface_pos)]
             )
 
+            full_polygon = shp.Polygon(
+                [
+                    (-PLOT_THRESHOLD_OFFSET, -PLOT_THRESHOLD_OFFSET),
+                    (-PLOT_THRESHOLD_OFFSET, max_interface_pos),
+                    (max_time, max_interface_pos),
+                    (max_time, -PLOT_THRESHOLD_OFFSET),
+                ]
+            )
+
             for polygon in polygons:
                 pieces = split(polygon, line)
                 midpoint: shp.Point = polygon.representative_point()
@@ -970,9 +980,22 @@ class ShockwaveDrawer:
 
                 label = self.diagram.get_label_for_density(below.density)
 
+                full_polygon = full_polygon.difference(polygon)
+
                 polygons_out.append(
                     GraphPolygon(polygon, below, dtPoint(midpoint.x, midpoint.y), label)
                 )
+
+            full_polygon_point: shp.Point = full_polygon.representative_point()
+            print(full_polygon_point)
+            polygons_out.append(
+                GraphPolygon(
+                    full_polygon,
+                    self.default_state,
+                    dtPoint(full_polygon_point.x, full_polygon_point.y),
+                    "A",
+                )
+            )
 
         return FigureResult(
             max_interface_pos,
@@ -1208,91 +1231,20 @@ class ShockwaveDrawer:
             graph[below].add(above)
             graph[above].add(below)
 
-        print(max_position, min_position)
+        G = nx.Graph()
 
+        for node, neighbors in graph.items():
+            for neighbor in neighbors:
+                G.add_edge(dataclasses.astuple(node), dataclasses.astuple(neighbor))
+
+        cycles: list[list[tuple[float, float]]] = nx.minimum_cycle_basis(G)
         polygons: list[shp.Polygon] = []
-        full_polygon: shp.Polygon | None = None
+        for cycle in cycles:
+            polygon = Polygon([(x[0], x[1]) for x in cycle])
 
-        seen: set[tuple[dtPoint, dtPoint]] = set()
-        for _ in range(2):
-            for point in graph.keys():
-                stack: collections.deque[dtPoint] = collections.deque([point])
-
-                cur = None
-                for neighbor in graph[point]:
-                    if (point, neighbor) not in seen:
-                        cur = neighbor
-                        break
-
-                if cur is None:
-                    continue
-
-                stop = False
-
-                iterations = 0
-                while cur:
-                    stack.append(cur)
-
-                    prev_vec = np.array(
-                        [cur.time - stack[-2].time, cur.position - stack[-2].position]
-                    )
-
-                    max_angle: float = -1
-                    next_point: dtPoint | None = None
-
-                    for neighbor in graph[cur]:
-                        vec = -1 * np.array(
-                            [neighbor.time - cur.time, neighbor.position - cur.position]
-                        )
-
-                        if float_isclose(cast(float, np.linalg.norm(prev_vec)), 0) or float_isclose(
-                            cast(float, np.linalg.norm(vec)), 0
-                        ):
-                            continue
-
-                        expr = (
-                            np.dot(prev_vec, vec) / np.linalg.norm(prev_vec) / np.linalg.norm(vec)
-                        )
-                        angle: float = np.degrees(np.arccos(np.clip(expr, -1, 1)))
-
-                        sign: float = np.sign(prev_vec[0] * vec[1] - prev_vec[1] * vec[0])
-
-                        if sign < 0:
-                            angle = 360 - angle
-
-                        if angle > max_angle:
-                            max_angle = angle
-                            next_point = neighbor
-
-                    if next_point is None or next_point == point:
-                        break
-                    cur = next_point
-
-                    iterations += 1
-
-                    if iterations == len(graph) * 2:
-                        stop = True
-                        break
-
-                if stop:
-                    continue
-
-                for i in range(len(stack) - 1):
-                    seen.add((stack[i], stack[i + 1]))
-                seen.add((stack[-1], stack[0]))
-
-                if len(stack) <= 2:
-                    continue
-                polygon = Polygon([(x.time, x.position) for x in stack])
-
-                if not float_isclose(
-                    polygon.area, (max_time - min_time) * (max_position - min_position)
-                ):
-                    polygons.append(polygon)
-                else:
-                    full_polygon = polygon
-
-        if len(polygons) == 0 and full_polygon:
-            polygons.append(full_polygon)
+            if len(cycle) > 2 and not float_isclose(
+                polygon.area, (max_time - min_time) * (max_position - min_position)
+            ):
+                polygons.append(polygon)
 
         return polygons
