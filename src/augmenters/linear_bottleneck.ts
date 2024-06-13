@@ -1,5 +1,5 @@
 import { CapacityEvent, UserInterface, dtPoint, float_isclose } from "../drawer_utils";
-import { ShockwaveDrawer}  from "../shockwave_drawer";
+import { ShockwaveDrawer }  from "../shockwave_drawer";
 import { CapacityBottleneck } from "./base_augmenter";
 
 
