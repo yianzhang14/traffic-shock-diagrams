@@ -1,14 +1,15 @@
 {
   "name": "traffic-shock-diagrams",
-  "version": "1.0.0",
-  "description": "",
-  "main": "main.js",
+  "version": "1.1.1",
+  "description": "A package for automatically creating traffic shockwave diagrams given initial conditions.",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "scripts": {
     "build": "tsc",
     "test": "test",
-    "start": "npm run build && node --experimental-specifier-resolution=node production/main.js"
+    "start": "npm run build && node --experimental-specifier-resolution=node dist/main.js"
   },
-  "author": "yianzhang14",
+  "author": "yianzhang14 <yianzhang14@gmail.com>",
   "license": "ISC",
   "devDependencies": {
     "@eslint/eslintrc": "^3.1.0",
@@ -26,5 +27,10 @@
   "dependencies": {
     "min-cycles": "^0.2.0",
     "typescript-collections": "^1.3.3"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yianzhang14/traffic-shock-diagrams.git"
+  },
+  "files": ["dist/**/*"]
 }

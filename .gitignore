@@ -4,6 +4,7 @@ data/*
 !.gitkeep
 
 node_modules
-production/
+dist/
 
 test.*
+test/

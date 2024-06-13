@@ -1,4 +1,4 @@
-import ShockwaveDrawer from "../shockwave_drawer";
+import { ShockwaveDrawer } from "../shockwave_drawer";
 
 /**
  * Base class of anything that would augment/affect traffic flow in the shockwave diagram.
@@ -18,7 +18,7 @@ abstract class TrafficAugmenter {
  * @class CapacityBottleneck
  * @extends {TrafficAugmenter}
  */
-export default abstract class CapacityBottleneck extends TrafficAugmenter {
+export abstract class CapacityBottleneck extends TrafficAugmenter {
   public bottleneck: number;
 
   /**

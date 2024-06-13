@@ -1,7 +1,7 @@
 import { State, float_isclose } from "./drawer_utils";
 
 
-export default class FundamentalDiagram {
+export class FundamentalDiagram {
   public freeflow_speed: number;
   public jam_density: number;
   public traffic_wave_speed: number;

@@ -1,7 +1,4 @@
-import CapacityBottleneck from "./src/augmenters/base_augmenter";
-import { HorizontalBottleneck } from "./src/augmenters/linear_bottleneck";
-import FundamentalDiagram from "./src/fundamental_diagram";
-import ShockwaveDrawer from "./src/shockwave_drawer";
+import { HorizontalBottleneck, CapacityBottleneck, FundamentalDiagram, ShockwaveDrawer } from "./src/index";
 
 const diagram = new FundamentalDiagram(2, 5.0, 1.0, 1.0);
 

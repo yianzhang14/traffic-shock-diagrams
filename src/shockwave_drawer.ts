@@ -1,8 +1,8 @@
 import { Dictionary, Set, PriorityQueue, DefaultDictionary } from "typescript-collections";
 import assert from "assert";
-import CapacityBottleneck from "./augmenters/base_augmenter";
+import { CapacityBottleneck } from "./augmenters/base_augmenter";
 import { State, Event, DiagramInterface, dtPoint, IntersectionEvent, TruncationEvent, UserInterface, float_isclose, CapacityEvent, FixedTimeComparable, compareFixedTimeComparable, EventType, Trajectory } from "./drawer_utils";
-import FundamentalDiagram from "./fundamental_diagram";
+import { FundamentalDiagram } from "./fundamental_diagram";
 import { FigureResult, GraphInterface, GraphLine, GraphPolygon } from "./types";
 
 const EPS = 1e-4;
@@ -14,7 +14,7 @@ const PLOT_THRESHOLD_OFFSET = 1;
  * @export
  * @class ShockwaveDrawer
  */
-export default class ShockwaveDrawer {
+export class ShockwaveDrawer {
   private diagram: FundamentalDiagram;
   private default_state: State;
   private augments: CapacityBottleneck[];

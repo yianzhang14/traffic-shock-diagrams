@@ -2,11 +2,11 @@
     "compilerOptions": {
         "target": "ES2022",
         "module": "ES2022",
-        "declaration": false,
+        "declaration": true,
         "strict": true,
         "noImplicitAny": true,
         "noLib": false,
-        "outDir": "production",
+        "outDir": "dist",
         "skipLibCheck": true,
         "emitDecoratorMetadata": true,
         "experimentalDecorators": true,
@@ -23,5 +23,6 @@
     ],
     "exclude": [
         "node_modules",
+        "dist/"
     ]
 }

@@ -1,4 +1,4 @@
-import CapacityBottleneck from "./augmenters/base_augmenter";
+import { CapacityBottleneck } from "./augmenters/base_augmenter";
 
 const TOLERANCE = 4;
 const PLOT_THRESHOLD_OFFSET = 1;

@@ -1,9 +1,9 @@
 import { CapacityEvent, UserInterface, dtPoint } from "../drawer_utils";
-import ShockwaveDrawer from "../shockwave_drawer";
-import CapacityBottleneck from "./base_augmenter";
+import { ShockwaveDrawer } from "../shockwave_drawer";
+import { CapacityBottleneck } from "./base_augmenter";
 
 
-export default class TrafficLight extends CapacityBottleneck {
+export class TrafficLight extends CapacityBottleneck {
   private pos: number;
   private cycles: number[];
   private blocking_states: number[];
