@@ -48,7 +48,7 @@ export class dtPoint {
      * @memberof dtPoint
      */
   public getSlope(other: dtPoint): number {
-    if (float_isclose(this.position, other.position)) {
+    if (float_isclose(this.time, other.time)) {
       throw new Error("the points do not have a well-defined slope, as they share a time");
     }
 
@@ -131,7 +131,7 @@ export abstract class Event {
      * @memberof Event
      */
   public static compareTo(x: Event, y: Event): number {
-    return x.point.time - y.point.time;
+    return y.point.time - x.point.time;
   }
 }
 
@@ -736,9 +736,9 @@ export interface FixedTimeComparable {
 
 export function compareFixedTimeComparable(x: FixedTimeComparable, y: FixedTimeComparable): number {
   if (x.priority == y.priority) {
-    return x.position - y.position;
+    return -1 * (x.position - y.position);
   }
 
-  return x.priority - y.priority;
+  return -1 * (x.priority - y.priority);
 }
 

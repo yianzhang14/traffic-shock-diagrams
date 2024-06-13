@@ -1,10 +1,9 @@
-import { extract_cycles } from "min-cycles";
-import { Dictionary, Set, PriorityQueue, DefaultDictionary, Stack } from "typescript-collections";
+import { Dictionary, Set, PriorityQueue, DefaultDictionary } from "typescript-collections";
 import assert from "assert";
 import CapacityBottleneck from "./augmenters/base_augmenter";
 import { State, Event, DiagramInterface, dtPoint, IntersectionEvent, TruncationEvent, UserInterface, float_isclose, CapacityEvent, FixedTimeComparable, compareFixedTimeComparable, EventType, Trajectory } from "./drawer_utils";
 import FundamentalDiagram from "./fundamental_diagram";
-import { GraphInterface, GraphLine, GraphPolygon } from "./types";
+import { FigureResult, GraphInterface, GraphLine, GraphPolygon } from "./types";
 
 const EPS = 1e-4;
 const PLOT_THRESHOLD_OFFSET = 1;
@@ -65,6 +64,22 @@ export default class ShockwaveDrawer {
     if (this.intersections.size() !== 0) {
       throw new EvalError("Had intersection between two user interfaces");
     }
+  }
+
+  public addUserInterface(diagram_interface: UserInterface): void {
+    if (!diagram_interface.isUserGenerated()) {
+      throw new TypeError("Can only add user interfaces");
+    }
+
+    this.addInterface(diagram_interface);
+  }
+
+  public addCapacityEvent(event: CapacityEvent): void {
+    if (!(event.type === EventType.capacity)) {
+      throw new TypeError("Can only add capacity events");
+    }
+
+    this.events.add(event);
   }
 
   /**
@@ -162,13 +177,13 @@ export default class ShockwaveDrawer {
           || (!below && diagram_interface.slope < res.slope)
         ) {
           res = diagram_interface;
-        } else if (
-          (scale * (point.position - cur) >= 0 
-          && (scale * (point.position - cur) < min_dist))
-        ) {
-          res = diagram_interface;
-          min_dist = scale * (point.position - cur);
-        }
+        } 
+      } else if (
+        (scale * (point.position - cur) >= 0 
+        && (scale * (point.position - cur) < min_dist))
+      ) {
+        res = diagram_interface;
+        min_dist = scale * (point.position - cur);
       }
     }
 
@@ -317,6 +332,8 @@ export default class ShockwaveDrawer {
           byproduct_interface_state,
           cur.point
         );
+
+        this.addInterface(byproduct_interface);
 
         if (float_isclose(byproduct_interface.slope, interface_slope)) {
           throw new EvalError("An invalid interface was somehow created -- duplicated existing interface");
@@ -517,7 +534,7 @@ export default class ShockwaveDrawer {
       const pos_queue = new PriorityQueue<FixedTimeComparable>(compareFixedTimeComparable);
 
       while (this.events.size() !== 0 && float_isclose(this.events.peek()!.point.time, time)) {
-        const x: Event| undefined = this.events.peek();
+        const x: Event| undefined = this.events.dequeue();
 
         if (x === undefined) {
           break;
@@ -547,14 +564,14 @@ export default class ShockwaveDrawer {
       }
 
       while (pos_queue.size() !== 0) {
-        const cur = pos_queue.peek()!;
+        const cur = pos_queue.dequeue()!;
         const event = cur.event;
 
         if (event.disabled) {
           continue;
         }
 
-        console.log("processing event");
+        console.log("processing event", event.point, event.type);
 
         switch (event.type) {
         case EventType.capacity: {
@@ -611,7 +628,7 @@ export default class ShockwaveDrawer {
     with_polygons: boolean, 
     set_max_pos?: number, 
     set_max_time?: number
-  ) {
+  ): FigureResult {
     const user_interfaces_out: GraphLine[] = [];
     const interfaces_out: GraphInterface[] = [];
     const trajectories_out: GraphLine[][] = [];
@@ -660,7 +677,7 @@ export default class ShockwaveDrawer {
       }
 
       const p1 = diagram_interface.lower_bound;
-      const p2 = diagram_interface.upper_bound;
+      let p2 = diagram_interface.upper_bound;
 
       min_pos = Math.min(min_pos, p1.position);
 
@@ -673,6 +690,7 @@ export default class ShockwaveDrawer {
 
         assert(pos !== undefined);
         max_pos = Math.max(max_pos, pos);
+        p2 = new dtPoint(max_time, pos);
       }
 
       if (!p1.equalTo(p2)) {
@@ -749,9 +767,16 @@ export default class ShockwaveDrawer {
 
     min_pos = Math.min(min_pos, 0) - PLOT_THRESHOLD_OFFSET;
 
-    if (with_polygons) {
-      ;
-    }
+    return {
+      max_pos,
+      min_pos,
+      max_time,
+      min_time: -1 * PLOT_THRESHOLD_OFFSET,
+      user_interfaces: user_interfaces_out,
+      interfaces: interfaces_out,
+      polygons: polygons_out,
+      trajectories: trajectories_out
+    };
   }
 
   private static linspace(start: number, stop: number, num: number): number[] {
@@ -825,9 +850,17 @@ export default class ShockwaveDrawer {
       graph.getValue(above).add(below);
     }
 
-    
+    // TODO
 
     return [];
+  }
+
+  public getSimulationTime(): number {
+    return this.simulation_time ?? -1;
+  }
+
+  public getInterfaces(): DiagramInterface[] {
+    return this.interfaces;
   }
 
 

@@ -4,7 +4,9 @@
   "description": "",
   "main": "main.js",
   "scripts": {
-    "test": "test"
+    "build": "tsc",
+    "test": "test",
+    "start": "npm run build && node --experimental-specifier-resolution=node production/main.js"
   },
   "author": "yianzhang14",
   "license": "ISC",
