@@ -19,7 +19,9 @@ export class FundamentalDiagram {
      * @param {number} init_density initial density of the situation
      * @memberof FundamentalDiagram
      */
-  constructor(freeflow_speed: number, jam_density: number, traffic_wave_speed: number, init_density: number) {
+  constructor(
+    freeflow_speed: number, jam_density: number, traffic_wave_speed: number, init_density: number
+  ) {
     if (!(freeflow_speed > 0 && jam_density > 0 && traffic_wave_speed > 0)) {
       throw new RangeError("All inputs/speeds must be positive");
     }
@@ -39,7 +41,9 @@ export class FundamentalDiagram {
 
     // solve a system of linear equations to get the peak/intersection
     // between the freeflow and traffic wave portions of the fundmental diagram
-    this.capacity_density = (traffic_wave_speed * jam_density) / (traffic_wave_speed + freeflow_speed);
+    this.capacity_density = (
+      traffic_wave_speed * jam_density
+    ) / (traffic_wave_speed + freeflow_speed);
     this.capacity = this.capacity_density * freeflow_speed;
   }
 
@@ -153,7 +157,9 @@ export class FundamentalDiagram {
 
     // solving a linear equation
     const left_density: number = flow / this.freeflow_speed;
-    const right_density = (flow - this.capacity - this.traffic_wave_speed * this.capacity_density) / (-1 * this.traffic_wave_speed);
+    const right_density = (
+      flow - this.capacity - this.traffic_wave_speed * this.capacity_density
+    ) / (-1 * this.traffic_wave_speed);
 
     if (left) {
       return new State(left_density, flow);

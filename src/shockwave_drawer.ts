@@ -525,6 +525,19 @@ export class ShockwaveDrawer {
     }
   }
 
+  public runAndGenerateFigure(
+    num_trajectories: number, 
+    with_trajectories: boolean, 
+    with_polygons: boolean, 
+    set_max_time: number,
+    set_max_pos?: number, 
+  ) {
+    this.run(set_max_time);
+    return this.generateFigure(
+      num_trajectories, with_trajectories, with_polygons, set_max_time, set_max_pos
+    );
+  }
+
   public run(simulation_time: number): void {
     this.setup();
 

@@ -1,5 +1,6 @@
 import { HorizontalBottleneck, CapacityBottleneck, FundamentalDiagram, ShockwaveDrawer } from "./src/index";
 
+// alternatively, look at getShockwave
 const diagram = new FundamentalDiagram(2, 5.0, 1.0, 1.0);
 
 const augments: CapacityBottleneck[] = [];
