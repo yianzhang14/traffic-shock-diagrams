@@ -1,7 +1,7 @@
 {
     "compilerOptions": {
         "target": "ES2022",
-        "module": "ES2022",
+        "module": "CommonJS",
         "declaration": true,
         "strict": true,
         "noImplicitAny": true,
@@ -13,9 +13,11 @@
         "resolveJsonModule" : true,
         "strictNullChecks": true,
         "esModuleInterop": true,
-         "moduleResolution": "node",
-         "sourceMap": true,
-         "downlevelIteration": true
+        "moduleResolution": "node",
+        "sourceMap": true,
+        "downlevelIteration": true,
+        "allowSyntheticDefaultImports": true,
+        "removeComments": false
       },
     "include": [
         "**/*",

@@ -1,9 +1,9 @@
 import { Dictionary, Set, PriorityQueue, DefaultDictionary } from "typescript-collections";
-import assert from "assert";
+
 import { CapacityBottleneck } from "./augmenters/base_augmenter";
 import { State, Event, DiagramInterface, dtPoint, IntersectionEvent, TruncationEvent, UserInterface, float_isclose, CapacityEvent, FixedTimeComparable, compareFixedTimeComparable, EventType, Trajectory } from "./drawer_utils";
 import { FundamentalDiagram } from "./fundamental_diagram";
-import { FigureResult, GraphInterface, GraphLine, GraphPolygon } from "./types";
+import { FigureResult, GraphInterface, GraphLine, GraphPolygon, GraphTrajectory } from "./types";
 
 const EPS = 1e-4;
 const PLOT_THRESHOLD_OFFSET = 1;
@@ -296,8 +296,9 @@ export class ShockwaveDrawer {
           throw new EvalError("An invalid interface was somehow created--duplicated the original interface");
         }
 
-        assert(main_interface.above !== undefined);
-        assert(main_interface.below !== undefined);
+        if (main_interface.above === undefined || main_interface.below === undefined) {
+          throw new TypeError("Main interface should have a well-defined above/below interface");
+        }
 
         // update states -- enforces that these set states are logically consistent (any time we set an interface, the result would be identical)
         if (cur.user_interface.upper_bound.equalTo(cur.point)) {
@@ -339,8 +340,9 @@ export class ShockwaveDrawer {
           throw new EvalError("An invalid interface was somehow created -- duplicated existing interface");
         }
 
-        assert(byproduct_interface.above);
-        assert(byproduct_interface.below);
+        if (byproduct_interface.above === undefined || byproduct_interface.below === undefined) {
+          throw new TypeError("Byproduct interface above/below states should be well-defined");
+        }
 
         if (cur.user_interface.upper_bound.equalTo(cur.point)) {
           if (byproduct_interface.slope < interface_slope) {
@@ -631,7 +633,7 @@ export class ShockwaveDrawer {
   ): FigureResult {
     const user_interfaces_out: GraphLine[] = [];
     const interfaces_out: GraphInterface[] = [];
-    const trajectories_out: GraphLine[][] = [];
+    const trajectories_out: GraphTrajectory[] = [];
     const polygons_out: GraphPolygon[] = [];
 
     let max_pos = -1;
@@ -688,7 +690,10 @@ export class ShockwaveDrawer {
       if (p2.time === Infinity) {
         const pos = diagram_interface.getPosAtTime(max_time);
 
-        assert(pos !== undefined);
+        if (pos === undefined ) {
+          throw new TypeError("Diagram interface should be defined at max time");
+        }
+
         max_pos = Math.max(max_pos, pos);
         p2 = new dtPoint(max_time, pos);
       }
@@ -706,7 +711,9 @@ export class ShockwaveDrawer {
     if (with_trajectories) {
       const slope = this.default_state.getSlope();
 
-      for (const pos of ShockwaveDrawer.linspace(-1 * slope, max_pos, num_trajectories)) {
+      for (const pos of ShockwaveDrawer.linspace(
+        -1 * slope * max_time, max_pos, num_trajectories
+      )) {
         const cur_trajectories: GraphLine[] = [];
 
         try {
@@ -720,7 +727,9 @@ export class ShockwaveDrawer {
               const intersection = x[0];
               const intersecting_interface = x[1];
 
-              assert(intersecting_interface.above);
+              if (intersecting_interface.above === undefined) {
+                throw new TypeError("Intersecting interface above state should not be undefined");
+              }
 
               next_trajectory = new Trajectory(
                 intersection, intersecting_interface.above.getSlope(), intersection
@@ -743,7 +752,7 @@ export class ShockwaveDrawer {
                 break;
               }
 
-              p2 = new dtPoint(max_time + PLOT_THRESHOLD_OFFSET, p2_pos);
+              p2 = new dtPoint(max_time + PLOT_THRESHOLD_OFFSET, p2_pos,);
             }
 
             cur_trajectories.push({
@@ -761,7 +770,19 @@ export class ShockwaveDrawer {
           console.error(err);
         }
 
-        trajectories_out.push(cur_trajectories);
+        if (cur_trajectories.length >= 1) {
+          const cleaned_traj: GraphTrajectory = [
+            cur_trajectories[0].point1, cur_trajectories[0].point2
+          ];
+
+          for (let i = 1; i < cur_trajectories.length; i++) {
+            cleaned_traj.push(cur_trajectories[i].point2);
+          }
+
+          trajectories_out.push(cleaned_traj);
+        }
+
+        
       }
     }
 
@@ -813,7 +834,11 @@ export class ShockwaveDrawer {
 
       if (diagram_interface.upper_bound.time === Infinity) {
         const y_pos = diagram_interface.getPosAtTime(max_time);
-        assert(y_pos);
+
+        if (y_pos === undefined ){
+          throw new TypeError("Polygon y pos should not be undefined");
+        }
+
         y = new dtPoint(max_time, y_pos);
       }
 

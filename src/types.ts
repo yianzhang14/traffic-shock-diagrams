@@ -1,5 +1,7 @@
 import { State, dtPoint } from "./drawer_utils";
 
+export type GraphTrajectory = dtPoint[];
+
 export interface GraphLine {
   point1: dtPoint,
   point2: dtPoint,
@@ -25,6 +27,6 @@ export interface FigureResult {
   user_interfaces: GraphLine[],
   interfaces: GraphInterface[],
   polygons: GraphPolygon[],
-  trajectories: GraphLine[][]
+  trajectories: GraphTrajectory[]
 };
 

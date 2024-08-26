@@ -5,7 +5,7 @@ const PLOT_THRESHOLD_OFFSET = 1;
 
 export function float_isclose(x: number, y: number): boolean {
   // compare their string reprs, rounded
-  return x.toFixed(TOLERANCE) === y.toFixed(TOLERANCE);
+  return Number(x.toFixed(TOLERANCE)) === Number(y.toFixed(TOLERANCE));
 }
 
 /**
@@ -499,7 +499,7 @@ export class DiagramInterface {
 
     // get the positions at the hypothetical time of intersection
     pos1 = this.getPosAtTime(timeOfIntersection);
-    pos2 = this.getPosAtTime(timeOfIntersection);
+    pos2 = other.getPosAtTime(timeOfIntersection);
 
     // if either interface is undefined at that point there is no intersection
     if ((pos1 === undefined) || (pos2 === undefined)) {
@@ -537,10 +537,11 @@ export class DiagramInterface {
     }
 
     // error checking for argument validity -- the provided endpoints must be coherent with the interface definition
-    if (!((lower === undefined || float_isclose(this.slope, this.point.getSlope(lower))))) {
+    if (lower !== undefined && !float_isclose(this.slope, this.point.getSlope(lower))) {
       throw new RangeError("The lower bound supplied is invalid--it does not fall along the interface line");
     }
-    if (!((upper === undefined) || float_isclose(this.slope, this.point.getSlope(upper)))) {
+    
+    if (upper !== undefined && !float_isclose(this.slope, this.point.getSlope(upper))) {
       throw new RangeError("The upper bound supplied is invalid--it does not fall along the interface line");
     }
 
