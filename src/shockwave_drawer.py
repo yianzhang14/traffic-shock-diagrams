@@ -988,14 +988,15 @@ class ShockwaveDrawer:
 
             full_polygon_point: shp.Point = full_polygon.representative_point()
             print(full_polygon_point)
-            polygons_out.append(
-                GraphPolygon(
-                    full_polygon,
-                    self.default_state,
-                    dtPoint(full_polygon_point.x, full_polygon_point.y),
-                    "A",
+            if not full_polygon_point.is_empty:
+                polygons_out.append(
+                    GraphPolygon(
+                        full_polygon,
+                        self.default_state,
+                        dtPoint(full_polygon_point.x, full_polygon_point.y),
+                        "A",
+                    )
                 )
-            )
 
         return FigureResult(
             max_interface_pos,
