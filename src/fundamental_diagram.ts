@@ -65,7 +65,7 @@ export class FundamentalDiagram {
     } else if (density < this.capacity_density) {
       return this.freeflow_speed * density;
     } else {
-      return this.capacity - this.traffic_wave_speed * density;
+      return this.capacity - this.traffic_wave_speed * (density - this.capacity_density);
     }
   }
 

@@ -156,7 +156,7 @@ export class ShockwaveDrawer {
      */
   private resolveState(point: dtPoint, below = true): State {
     const scale = below ? 1 : -1;
-    let res: DiagramInterface | undefined = undefined;
+    let res: DiagramInterface | undefined;
     let min_dist = Infinity;
 
     for (const diagram_interface of this.interfaces) {
@@ -484,6 +484,17 @@ export class ShockwaveDrawer {
       }
 
       interfaces.push(diagram_interface);
+    }
+
+    if (interfaces.length === 0) {
+      return;
+    }
+
+    for (const diagram_interface of interfaces) {
+      if (diagram_interface === cur.user_interface) {
+        continue;
+      }
+
       diagram_interface.addCutoff(undefined, cur.point);
     }
 
