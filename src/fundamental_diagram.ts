@@ -44,6 +44,11 @@ export class FundamentalDiagram {
     this.capacity_density = (
       traffic_wave_speed * jam_density
     ) / (traffic_wave_speed + freeflow_speed);
+
+    if (init_density > this.capacity_density) {
+      throw new RangeError("The initial density should be non-queued for now");
+    }
+    
     this.capacity = this.capacity_density * freeflow_speed;
   }
 
@@ -180,6 +185,6 @@ export class FundamentalDiagram {
       throw new RangeError("density of the provided state is invalid");
     }
 
-    return state.density > this.capacity && !float_isclose(state.density, this.capacity_density);
+    return state.density > this.capacity_density && !float_isclose(state.density, this.capacity_density);
   }
 }
