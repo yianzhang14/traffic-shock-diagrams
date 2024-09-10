@@ -2,10 +2,11 @@ import { CapacityBottleneck } from "./augmenters/base_augmenter";
 
 const TOLERANCE = 4;
 const PLOT_THRESHOLD_OFFSET = 1;
+const EPSILON = Math.pow(10, -1 * TOLERANCE);
 
 export function float_isclose(x: number, y: number): boolean {
   // compare their string reprs, rounded
-  return Number(x.toFixed(TOLERANCE)) === Number(y.toFixed(TOLERANCE));
+  return Math.abs(x - y) <= EPSILON;
 }
 
 /**

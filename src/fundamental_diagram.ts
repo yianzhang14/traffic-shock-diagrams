@@ -45,9 +45,9 @@ export class FundamentalDiagram {
       traffic_wave_speed * jam_density
     ) / (traffic_wave_speed + freeflow_speed);
 
-    if (init_density > this.capacity_density) {
-      throw new RangeError("The initial density should be non-queued for now");
-    }
+    // if (init_density > this.capacity_density) {
+    //   throw new RangeError("The initial density should be non-queued for now");
+    // }
     
     this.capacity = this.capacity_density * freeflow_speed;
   }
