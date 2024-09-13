@@ -1,3 +1,6 @@
+import * as turf from "@turf/turf";
+import { Feature, Polygon } from "geojson";
+import { acos, dot, norm, pi, sign } from "mathjs";
 import { Dictionary, Set, PriorityQueue, DefaultDictionary } from "typescript-collections";
 
 import { CapacityBottleneck } from "./augmenters/base_augmenter";
@@ -15,13 +18,15 @@ import {
   compareFixedTimeComparable, 
   EventType, 
   Trajectory, 
-  debug_log 
 } from "./drawer_utils";
 import { FundamentalDiagram } from "./fundamental_diagram";
-import { FigureResult, GraphInterface, GraphLine, GraphPolygon, GraphTrajectory } from "./types";
+import { clip, debug_log } from "./misc";
+import { FigureResult, GraphInterface, GraphLine, GraphPolygon, GraphTrajectory, Pair } from "./types";
 
 const EPS = 1e-4;
 const PLOT_THRESHOLD_OFFSET = 1;
+
+type polygon_t = Feature<Polygon>;
 
 /**
  * This class encapsulates all the logic needed to create the shockwave diagram given a fundmental diagram settings object and a list of augments to consider.
@@ -823,12 +828,32 @@ export class ShockwaveDrawer {
 
           trajectories_out.push(cleaned_traj);
         }
-
-        
       }
     }
 
     min_pos = Math.min(min_pos, 0) - PLOT_THRESHOLD_OFFSET;
+
+    if (with_polygons) {
+      const polygons = this.resolvePolygons(max_time, max_pos, min_pos);
+
+      // const line = turf.lineString(
+      //   [[-10 * PLOT_THRESHOLD_OFFSET, max_interface_pos], [max_time, max_interface_pos]]
+      // );
+
+      for (const polygon of polygons) {
+        const midpoint = turf.pointOnFeature(polygon).geometry.coordinates;
+        const midpoint_dt = new dtPoint(midpoint[0], midpoint[1]);
+
+        const below = this.resolveState(midpoint_dt, true);
+
+        polygons_out.push({
+          points: polygon.geometry.coordinates[0].map(([x, y]) => new dtPoint(x, y)),
+          state: below,
+          point: midpoint_dt,
+          label: "A"
+        });
+      }
+    }
 
     return {
       max_pos,
@@ -838,13 +863,9 @@ export class ShockwaveDrawer {
       user_interfaces: user_interfaces_out,
       interfaces: interfaces_out,
       polygons: polygons_out,
-      trajectories: trajectories_out
+      trajectories: trajectories_out,
+      states: this.getStates()
     };
-  }
-
-  private static linspace(start: number, stop: number, num: number): number[] {
-    const step = (stop - start) / num;
-    return Array.from({ length: num }, (_, i) => start + step * i);
   }
 
   private resolvePolygons(
@@ -852,7 +873,7 @@ export class ShockwaveDrawer {
     max_position: number, 
     min_position: number, 
     min_time: number = -PLOT_THRESHOLD_OFFSET
-  ): GraphPolygon[] {
+  ): polygon_t[] {
     const graph = new DefaultDictionary<dtPoint, Set<dtPoint>>(
       () => { return new Set<dtPoint>(); }
     );
@@ -874,7 +895,7 @@ export class ShockwaveDrawer {
       const x = diagram_interface.lower_bound;
       let y = diagram_interface.upper_bound;
 
-      if (diagram_interface.upper_bound.time === Infinity) {
+      if (y.time === Infinity) {
         const y_pos = diagram_interface.getPosAtTime(max_time);
 
         if (y_pos === undefined ){
@@ -901,7 +922,7 @@ export class ShockwaveDrawer {
     }
 
     graph.getValue(bottom_left).add(top_left);
-    graph.getValue(bottom_left).add(bottom_left);
+    graph.getValue(bottom_left).add(bottom_right);
     graph.getValue(top_left).add(top_right);
     graph.getValue(top_left).add(bottom_left);
     graph.getValue(bottom_right).add(bottom_left);
@@ -917,9 +938,113 @@ export class ShockwaveDrawer {
       graph.getValue(above).add(below);
     }
 
-    // TODO
+    debug_log(max_position, min_position);
 
-    return [];
+    const polygons: polygon_t[] = [];
+    let full_polygon: polygon_t | null = null;
+
+    const seen = new Set<Pair<dtPoint>>;
+
+    for (let i = 0; i < 2; i++) {
+      for (const point of graph.keys()) {
+        const stack: dtPoint[] = [];
+        stack.push(point);
+
+        let cur: dtPoint | null = null;
+        for (const neighbor of graph.getValue(point).toArray()) {
+          if (!seen.contains(new Pair(point, neighbor))) {
+            cur = neighbor;
+            break;
+          }
+        }
+        
+        if (cur === null) {
+          continue;
+        }
+
+        let stop = false;
+        let iterations = 0;
+
+        while (cur !== null) {
+          stack.push(cur);
+          const n = stack.length;
+
+          const prev_vec = [cur.time - stack[n - 2].time, cur.position - stack[n - 2].position];
+
+          let max_angle = -1;
+          let next_point: dtPoint | null = null;
+
+          for (const neighbor of graph.getValue(cur).toArray()) {
+            const vec = [cur.time - neighbor.time, cur.position - neighbor.position];
+
+            if (float_isclose(norm(prev_vec) as number, 0) 
+              || float_isclose(norm(vec) as number, 0)
+            ) {
+              continue;
+            }
+
+            const expr = dot(prev_vec, vec) / (norm(prev_vec) as number) / (norm(vec) as number);
+            let angle = (acos(clip(expr, -1, 1)) as number) * 180 / pi;
+
+            const det_sign = sign(prev_vec[0] * vec[1] - prev_vec[1] * vec[0]);
+
+            if (det_sign < 0) {
+              angle = 360 - angle;
+            }
+
+            if (angle > max_angle) {
+              max_angle = angle;
+              next_point = neighbor;
+            }
+          }
+
+          if (next_point === null || next_point.equalTo(point)) {
+            break;
+          }
+
+          cur = next_point;
+
+          iterations++;
+
+          if (iterations === graph.size() * 2) {
+            stop = true;
+            break;
+          }
+        }
+
+        if (stop) {
+          break;
+        }
+
+        for (let i = 0; i < stack.length - 1; i++) { 
+          seen.add(new Pair<dtPoint>(stack[i], stack[i + 1]));
+        }
+        seen.add(new Pair<dtPoint>(stack[stack.length - 1], stack[0]));
+
+        if (stack.length <= 2) {
+          continue;
+        }
+
+        const points = stack.map((x) => [x.time, x.position]);
+        points.push([stack[0].time, stack[0].position]);
+        const poly = turf.polygon([points]);
+
+        if (!float_isclose(
+          turf.area(poly), 
+          (max_time - min_time) * (max_position - min_position))
+        ) {
+          polygons.push(poly);
+        } else {
+          full_polygon = poly;
+        }
+      }
+    }
+
+    if (polygons.length === 0 && full_polygon !== null) {
+      polygons.push(full_polygon);
+    }
+
+    return polygons;
   }
 
   public getSimulationTime(): number {

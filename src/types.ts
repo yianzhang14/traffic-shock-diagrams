@@ -2,6 +2,26 @@ import { State, dtPoint } from "./drawer_utils";
 
 export type GraphTrajectory = dtPoint[];
 
+interface HasToString {
+  toString: () => string;
+}
+
+export class Pair<T extends HasToString> {
+  first: T;
+  second: T;
+
+  constructor(first: T, second: T) {
+    this.first = first;
+    this.second = second;
+  }
+
+  public toString(): string {
+    return `${this.first.toString()};${this.second.toString()}`;
+  }
+}
+
+
+
 export interface GraphLine {
   point1: dtPoint,
   point2: dtPoint,
@@ -27,6 +47,7 @@ export interface FigureResult {
   user_interfaces: GraphLine[],
   interfaces: GraphInterface[],
   polygons: GraphPolygon[],
-  trajectories: GraphTrajectory[]
+  trajectories: GraphTrajectory[],
+  states: State[]
 };
 
