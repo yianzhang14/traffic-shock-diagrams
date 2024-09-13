@@ -7,7 +7,8 @@
   "scripts": {
     "build": "tsc",
     "test": "test",
-    "start": "npm run build && node --experimental-specifier-resolution=node dist/main.js"
+    "start": "npm run build && node --experimental-specifier-resolution=node dist/main.js",
+    "publish": "npm run build && npm publish"
   },
   "author": "yianzhang14 <yianzhang14@gmail.com>",
   "license": "ISC",
