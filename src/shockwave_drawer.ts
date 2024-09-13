@@ -755,9 +755,11 @@ export class ShockwaveDrawer {
     if (with_trajectories && this.diagram.init_density !== 0) {
       const slope = this.default_state.getSlope();
 
-      const step = (max_pos + slope * max_time) / num_trajectories;
+      const step = (
+        ((set_max_pos ?? max_pos) + slope * (set_max_time ?? max_time)) / num_trajectories
+      );
       for (let pos = 
-        Math.floor(-1 * slope * max_time / (1 / this.diagram.init_density * step))
+        Math.floor(-1 * slope * (set_max_time ?? max_time) / (1 / this.diagram.init_density * step))
          * (1 / this.diagram.init_density * step);
         pos <= max_pos; 
         pos += 1 / this.diagram.init_density * step

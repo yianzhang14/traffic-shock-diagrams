@@ -185,6 +185,8 @@ export class FundamentalDiagram {
       throw new RangeError("density of the provided state is invalid");
     }
 
-    return state.density > this.capacity_density && !float_isclose(state.density, this.capacity_density);
+    return (
+      state.density > this.capacity_density && !float_isclose(state.density, this.capacity_density)
+    );
   }
 }
