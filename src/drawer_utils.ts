@@ -4,6 +4,14 @@ const TOLERANCE = 4;
 const PLOT_THRESHOLD_OFFSET = 1;
 const EPSILON = Math.pow(10, -1 * TOLERANCE);
 
+const DEBUG = false;
+
+export function debug_log(...args: unknown[]) {
+  if (DEBUG) {
+    console.log(args);
+  }
+}
+
 export function float_isclose(x: number, y: number): boolean {
   // compare their string reprs, rounded
   return Math.abs(x - y) <= EPSILON;

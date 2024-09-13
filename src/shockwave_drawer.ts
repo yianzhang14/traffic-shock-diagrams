@@ -1,7 +1,22 @@
 import { Dictionary, Set, PriorityQueue, DefaultDictionary } from "typescript-collections";
 
 import { CapacityBottleneck } from "./augmenters/base_augmenter";
-import { State, Event, DiagramInterface, dtPoint, IntersectionEvent, TruncationEvent, UserInterface, float_isclose, CapacityEvent, FixedTimeComparable, compareFixedTimeComparable, EventType, Trajectory } from "./drawer_utils";
+import { 
+  State, 
+  Event, 
+  DiagramInterface, 
+  dtPoint, 
+  IntersectionEvent, 
+  TruncationEvent, 
+  UserInterface, 
+  float_isclose, 
+  CapacityEvent, 
+  FixedTimeComparable, 
+  compareFixedTimeComparable, 
+  EventType, 
+  Trajectory, 
+  debug_log 
+} from "./drawer_utils";
 import { FundamentalDiagram } from "./fundamental_diagram";
 import { FigureResult, GraphInterface, GraphLine, GraphPolygon, GraphTrajectory } from "./types";
 
@@ -500,7 +515,7 @@ export class ShockwaveDrawer {
 
     // if the user interface has not already been processed (it doesn't have valid states), create a new capacity event for when it "starts"
     if (!cur.user_interface.hasValidStates()) {
-      console.log("converting to capacity event");
+      debug_log("converting to capacity event");
 
       this.handleCapacityEvent(
         new CapacityEvent(
@@ -512,7 +527,7 @@ export class ShockwaveDrawer {
       );
       // otherwise, try to handle it as an intersection event
     } else {
-      console.log("handling right truncation event");
+      debug_log("handling right truncation event");
 
       // create a new interface to represent that this user interface is being split into two "components"
       // the newly-created interface is the old one but with a right-side cutoff
@@ -597,7 +612,7 @@ export class ShockwaveDrawer {
           continue;
         }
 
-        console.log("processing event", event.point, event.type);
+        debug_log("processing event", event.point, event.type);
 
         switch (event.type) {
         case EventType.capacity: {
@@ -736,11 +751,15 @@ export class ShockwaveDrawer {
       const slope = this.default_state.getSlope();
 
       const step = (max_pos + slope * max_time) / num_trajectories;
-      for (let pos = -1 * slope * max_time; pos <= max_pos; pos += 1 / this.diagram.init_density * step) {
+      for (let pos = 
+        Math.floor(-1 * slope * max_time / (1 / this.diagram.init_density * step))
+         * (1 / this.diagram.init_density * step);
+        pos <= max_pos; 
+        pos += 1 / this.diagram.init_density * step
+      ) {
         const cur_trajectories: GraphLine[] = [];
-
         try {
-          let cur = new Trajectory(new dtPoint(0, pos + 0.1), slope);
+          let cur = new Trajectory(new dtPoint(0, pos), slope);
 
           while (true) {  // eslint-disable-line no-constant-condition
             const x = this.findClosestIntersectionPoint_trajectory(cur);
