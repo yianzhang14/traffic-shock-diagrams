@@ -2,14 +2,12 @@
 import json
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from typing import Optional
+import shapely as shp
+
 
 # %%
 with open("output.json", "r") as f:
     data = json.load(f)
-
-# %%
-data
 
 
 # %%
@@ -35,20 +33,24 @@ def create_figure_plt(
 
     figure = data
 
-    # for graph_polygon in figure.polygons:
-    #     ax.add_patch(
-    #         patches.Polygon(
-    #             graph_polygon.polygon.exterior.coords,
-    #             closed=True,
-    #             alpha=0.5,
-    #         )
-    #     )
-    #     ax.annotate(
-    #         graph_polygon.label,
-    #         graph_polygon,
-    #         horizontalalignment="center",
-    #         verticalalignment="center",
-    #     )
+    for graph_polygon in figure["polygons"]:
+        polygon = shp.Polygon(
+            [(x["time"], x["position"]) for x in graph_polygon["points"]]
+        )
+        print(polygon.area)
+        ax.add_patch(
+            patches.Polygon(
+                polygon.exterior.coords,
+                closed=True,
+                alpha=0.5,
+            )
+        )
+        ax.annotate(
+            graph_polygon["label"],
+            (graph_polygon["point"]["time"], graph_polygon["point"]["position"]),
+            horizontalalignment="center",
+            verticalalignment="center",
+        )
 
     for user_interface in figure["user_interfaces"]:
         ax.plot(
@@ -93,7 +95,11 @@ def create_figure_plt(
 
 
 # %%
+len(data["polygons"])
+
+# %%
 fig, ax = create_figure_plt(True)
-fig.savefig("output.png")
+fig
+
 
 # %%

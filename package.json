@@ -1,6 +1,6 @@
 {
   "name": "traffic-shock-diagrams",
-  "version": "1.4.3",
+  "version": "1.4.6",
   "description": "A package for automatically creating traffic shockwave diagrams given initial conditions.",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
@@ -8,7 +8,7 @@
     "build": "tsc",
     "test": "test",
     "start": "npm run build && node --experimental-specifier-resolution=node dist/main.js",
-    "publish": "npm run build && npm publish"
+    "push": "npm run build && npm publish && npm i"
   },
   "author": "yianzhang14 <yianzhang14@gmail.com>",
   "license": "ISC",

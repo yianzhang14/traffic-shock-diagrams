@@ -1,6 +1,5 @@
 import * as turf from "@turf/turf";
-import { Feature, Polygon } from "geojson";
-import { acos, dot, norm, pi, sign } from "mathjs";
+import { acos, dot, max, norm, pi, sign, sum } from "mathjs";
 import { Dictionary, Set, PriorityQueue, DefaultDictionary } from "typescript-collections";
 
 import { CapacityBottleneck } from "./augmenters/base_augmenter";
@@ -20,13 +19,12 @@ import {
   Trajectory, 
 } from "./drawer_utils";
 import { FundamentalDiagram } from "./fundamental_diagram";
-import { clip, debug_log } from "./misc";
+import { calculateArea, clip, debug_log } from "./misc";
+import { polygon_t } from "./types";
 import { FigureResult, GraphInterface, GraphLine, GraphPolygon, GraphTrajectory, Pair } from "./types";
 
 const EPS = 1e-4;
 const PLOT_THRESHOLD_OFFSET = 1;
-
-type polygon_t = Feature<Polygon>;
 
 /**
  * This class encapsulates all the logic needed to create the shockwave diagram given a fundmental diagram settings object and a list of augments to consider.
@@ -943,7 +941,6 @@ export class ShockwaveDrawer {
     debug_log(max_position, min_position);
 
     const polygons: polygon_t[] = [];
-    let full_polygon: polygon_t | null = null;
 
     const seen = new Set<Pair<dtPoint>>;
 
@@ -1031,19 +1028,23 @@ export class ShockwaveDrawer {
         points.push([stack[0].time, stack[0].position]);
         const poly = turf.polygon([points]);
 
-        if (!float_isclose(
-          turf.area(poly), 
-          (max_time - min_time) * (max_position - min_position))
-        ) {
-          polygons.push(poly);
-        } else {
-          full_polygon = poly;
-        }
+        polygons.push(poly);
       }
     }
 
-    if (polygons.length === 0 && full_polygon !== null) {
-      polygons.push(full_polygon);
+    if (polygons.length > 1) {
+      const areas = polygons.map((poly) => calculateArea(poly));
+      const maxArea = max(areas);
+      const complement = sum(areas) - maxArea;
+
+      if (float_isclose(maxArea, complement)) {
+        for (let i = 0; i < polygons.length; i++) {
+          if (float_isclose(areas[i], maxArea)) {
+            polygons.splice(i, 1);
+            break;
+          }
+        }
+      }
     }
 
     return polygons;

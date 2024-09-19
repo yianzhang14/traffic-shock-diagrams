@@ -1,6 +1,10 @@
+import { Feature, Polygon } from "geojson";
+
 import { State, dtPoint } from "./drawer_utils";
 
 export type GraphTrajectory = dtPoint[];
+
+export type polygon_t = Feature<Polygon>;
 
 interface HasToString {
   toString: () => string;
