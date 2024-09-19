@@ -1,5 +1,6 @@
 import * as turf from "@turf/turf";
 import { acos, dot, max, norm, pi, sign, sum } from "mathjs";
+import polylabel from "polylabel";
 import { Dictionary, Set, PriorityQueue, DefaultDictionary } from "typescript-collections";
 
 import { CapacityBottleneck } from "./augmenters/base_augmenter";
@@ -841,7 +842,7 @@ export class ShockwaveDrawer {
       // );
 
       for (const polygon of polygons) {
-        const midpoint = turf.pointOnFeature(polygon).geometry.coordinates;
+        const midpoint = polylabel(polygon.geometry.coordinates);
         const midpoint_dt = new dtPoint(midpoint[0], midpoint[1]);
 
         const below = this.resolveState(midpoint_dt, true);
