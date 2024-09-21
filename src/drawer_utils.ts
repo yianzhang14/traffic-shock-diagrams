@@ -31,6 +31,10 @@ export class dtPoint {
     this.position = position;
   }
 
+  public toArray(): [number, number] {
+    return [this.time, this.position];
+  }
+
   /**
      * Determines whether two dtPoint objects resolve ot the same point in time-space plane.
      * 

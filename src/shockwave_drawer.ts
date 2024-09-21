@@ -942,6 +942,15 @@ export class ShockwaveDrawer {
     debug_log(max_position, min_position);
 
     const polygons: polygon_t[] = [];
+    const full_polygon = turf.polygon(
+      [[
+        bottom_left.toArray(), 
+        bottom_right.toArray(), 
+        top_right.toArray(), 
+        top_left.toArray(), 
+        bottom_left.toArray()
+      ]]
+    );
 
     const seen = new Set<Pair<dtPoint>>;
 
@@ -1025,7 +1034,7 @@ export class ShockwaveDrawer {
           continue;
         }
 
-        const points = stack.map((x) => [x.time, x.position]);
+        const points = stack.map((x) => x.toArray());
         points.push([stack[0].time, stack[0].position]);
         const poly = turf.polygon([points]);
 
@@ -1048,7 +1057,13 @@ export class ShockwaveDrawer {
       }
     }
 
-    return polygons;
+    const out: polygon_t[] = [];
+
+    for (const polygon of polygons) {
+      out.push(turf.intersect(turf.featureCollection([polygon, full_polygon])) as polygon_t);
+    }
+
+    return out;
   }
 
   public getSimulationTime(): number {
