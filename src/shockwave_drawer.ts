@@ -684,7 +684,9 @@ export class ShockwaveDrawer {
     with_trajectories: boolean, 
     with_polygons: boolean, 
     set_max_pos?: number, 
-    set_max_time?: number
+    set_max_time?: number,
+    set_min_pos?: number,
+    set_min_time?: number,
   ): FigureResult {
     const user_interfaces_out: GraphLine[] = [];
     const interfaces_out: GraphInterface[] = [];
@@ -714,11 +716,11 @@ export class ShockwaveDrawer {
     max_time = Math.max(max_time, this.simulation_time!) + PLOT_THRESHOLD_OFFSET;
     
     if (set_max_time) {
-      max_time = set_max_time;
+      max_time = Math.max(set_max_time, max_time);
     }
     if (set_max_pos) {
       max_interface_pos = Math.max(max_interface_pos, set_max_pos);
-      max_pos = set_max_pos;
+      max_pos = Math.max(max_pos, set_max_pos);
     }
 
     for (const diagram_interface of this.interfaces) {
@@ -749,10 +751,7 @@ export class ShockwaveDrawer {
           throw new TypeError("Diagram interface should be defined at max time");
         }
 
-        if (!set_max_pos) {
-          max_pos = Math.max(max_pos, pos);
-        }
-        
+        max_pos = Math.max(max_pos, pos);
         p2 = new dtPoint(max_time, pos);
       }
 
@@ -770,12 +769,12 @@ export class ShockwaveDrawer {
       const slope = this.default_state.getSlope();
 
       const step = (
-        (max_pos + slope * max_time) / num_trajectories
+        ((set_max_pos ?? max_pos) + slope * (set_max_time ?? max_time)) / num_trajectories
       );
       for (let pos = 
         Math.floor(-1 * slope * (set_max_time ?? max_time) / (1 / this.diagram.init_density * step))
          * (1 / this.diagram.init_density * step);
-        pos <= max_pos; 
+        pos <= (set_max_pos ?? max_pos); 
         pos += 1 / this.diagram.init_density * step
       ) {
         const cur_trajectories: GraphLine[] = [];
@@ -850,7 +849,7 @@ export class ShockwaveDrawer {
     min_pos = Math.min(min_pos, 0) - PLOT_THRESHOLD_OFFSET;
 
     if (with_polygons) {
-      const polygons = this.resolvePolygons(max_time, max_pos, min_pos);
+      const polygons = this.resolvePolygons(max_time, max_pos, min_pos, undefined, set_max_pos, set_max_time, set_min_pos, set_min_time);
 
       // const line = turf.lineString(
       //   [[-10 * PLOT_THRESHOLD_OFFSET, max_interface_pos], [max_time, max_interface_pos]]
@@ -888,7 +887,11 @@ export class ShockwaveDrawer {
     max_time: number, 
     max_position: number, 
     min_position: number, 
-    min_time: number = -PLOT_THRESHOLD_OFFSET
+    min_time: number = -PLOT_THRESHOLD_OFFSET,
+    set_max_pos?: number,
+    set_max_time?: number,
+    set_min_pos?: number,
+    set_min_time?: number,
   ): polygon_t[] {
     const graph = new DefaultDictionary<dtPoint, Set<dtPoint>>(
       () => { return new Set<dtPoint>(); }
@@ -957,7 +960,7 @@ export class ShockwaveDrawer {
     debug_log(max_position, min_position);
 
     const polygons: polygon_t[] = [];
-    const full_polygon = turf.polygon(
+    let full_polygon = turf.polygon(
       [[
         bottom_left.toArray(), 
         bottom_right.toArray(), 
@@ -966,6 +969,18 @@ export class ShockwaveDrawer {
         bottom_left.toArray()
       ]]
     );
+
+    if (set_max_pos && set_max_time && set_min_pos && set_min_time) {
+      full_polygon = turf.polygon(
+        [[
+          [set_min_time, set_min_pos],
+          [set_max_time, set_min_pos],
+          [set_max_time, set_max_pos],
+          [set_min_time, set_max_pos],
+          [set_min_time, set_min_pos]
+        ]]
+      )
+    }
 
     const seen = new Set<Pair<dtPoint>>;
 
