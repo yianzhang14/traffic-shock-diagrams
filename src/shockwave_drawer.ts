@@ -21,7 +21,7 @@ import {
 } from "./drawer_utils";
 import { FundamentalDiagram } from "./fundamental_diagram";
 import { calculateArea, clip, debug_log } from "./misc";
-import { polygon_t } from "./types";
+import { DEFAULT_FIGURERESULT, polygon_t } from "./types";
 import { FigureResult, GraphInterface, GraphLine, GraphPolygon, GraphTrajectory, Pair } from "./types";
 
 const EPS = 1e-4;
@@ -45,6 +45,8 @@ export class ShockwaveDrawer {
   private truncations = new Dictionary<dtPoint, TruncationEvent>();
 
   private simulation_time: number | undefined;
+
+  private prev: FigureResult = DEFAULT_FIGURERESULT;
 
 
   /**
@@ -561,11 +563,21 @@ export class ShockwaveDrawer {
     with_polygons: boolean, 
     set_max_time: number,
     set_max_pos?: number, 
-  ) {
-    this.run(set_max_time);
-    return this.generateFigure(
-      num_trajectories, with_trajectories, with_polygons, set_max_time, set_max_pos
-    );
+  ): FigureResult {
+    try {
+      this.run(set_max_time);
+      const res = this.generateFigure(
+        num_trajectories, with_trajectories, with_polygons, set_max_time, set_max_pos
+      );
+
+      this.prev = res;
+
+      return res
+    } catch (e) {
+      console.error(e)
+
+      return this.prev;
+    }
   }
 
   public run(simulation_time: number): void {

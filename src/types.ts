@@ -55,3 +55,15 @@ export interface FigureResult {
   states: State[]
 };
 
+export const DEFAULT_FIGURERESULT: FigureResult = {
+  max_pos: 0,
+  min_pos: 0,
+  max_time: 0,
+  min_time: 0,
+  user_interfaces: [],
+  interfaces: [],
+  polygons: [],
+  trajectories: [],
+  states: []
+}
+
