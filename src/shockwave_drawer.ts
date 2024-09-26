@@ -702,11 +702,11 @@ export class ShockwaveDrawer {
     max_time = Math.max(max_time, this.simulation_time!) + PLOT_THRESHOLD_OFFSET;
     
     if (set_max_time) {
-      max_time = Math.max(set_max_time, max_time);
+      max_time = set_max_time;
     }
     if (set_max_pos) {
       max_interface_pos = Math.max(max_interface_pos, set_max_pos);
-      max_pos = Math.max(max_pos, set_max_pos);
+      max_pos = set_max_pos;
     }
 
     for (const diagram_interface of this.interfaces) {
@@ -737,7 +737,10 @@ export class ShockwaveDrawer {
           throw new TypeError("Diagram interface should be defined at max time");
         }
 
-        max_pos = Math.max(max_pos, pos);
+        if (!set_max_pos) {
+          max_pos = Math.max(max_pos, pos);
+        }
+        
         p2 = new dtPoint(max_time, pos);
       }
 
@@ -755,7 +758,7 @@ export class ShockwaveDrawer {
       const slope = this.default_state.getSlope();
 
       const step = (
-        ((set_max_pos ?? max_pos) + slope * (set_max_time ?? max_time)) / num_trajectories
+        (max_pos + slope * max_time) / num_trajectories
       );
       for (let pos = 
         Math.floor(-1 * slope * (set_max_time ?? max_time) / (1 / this.diagram.init_density * step))
