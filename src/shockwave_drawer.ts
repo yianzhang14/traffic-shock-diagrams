@@ -1108,8 +1108,17 @@ export class ShockwaveDrawer {
     const out: polygon_t[] = [];
 
     for (const polygon of polygons) {
-      console.log(full_polygon.geometry.coordinates)
-      out.push(turf.intersect(turf.featureCollection([polygon, full_polygon])) as polygon_t);
+      const intersect = turf.intersect(turf.featureCollection([polygon, full_polygon]))
+
+      if (intersect === null || intersect.geometry === undefined) {
+        continue;
+      } else if (intersect.geometry.type === "Polygon") {
+        out.push(intersect as polygon_t)
+      } else if (intersect.geometry.type === "MultiPolygon") {
+        intersect.geometry.coordinates.forEach(subPolygon => {
+          out.push(turf.polygon(subPolygon))
+        })
+      }
     }
 
     return out;
