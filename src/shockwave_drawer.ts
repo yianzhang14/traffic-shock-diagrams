@@ -679,6 +679,24 @@ export class ShockwaveDrawer {
     return result;
   }
 
+  /**
+   * Generates a figure after the drawer has run, creating interfaces & states partitioning the timespace diagram.
+   * 
+   * Can generate with trajectories (and a number of trajectories), which scale according to the initial density. 
+   * Can also generate with polygon, which overlay the partitioned areas.
+   * 
+   * Can also specify the viewport---defined by max/min position and max/min time. If not specified, will scale according
+   * to the geometries generated (assuming only positive times).
+   * 
+   * @param num_trajectories 
+   * @param with_trajectories 
+   * @param with_polygons 
+   * @param set_max_pos 
+   * @param set_max_time 
+   * @param set_min_pos 
+   * @param set_min_time 
+   * @returns 
+   */
   public generateFigure(
     num_trajectories: number, 
     with_trajectories: boolean, 
@@ -871,10 +889,10 @@ export class ShockwaveDrawer {
     }
 
     return {
-      max_pos,
-      min_pos,
-      max_time,
-      min_time: -1 * PLOT_THRESHOLD_OFFSET,
+      max_pos: set_max_pos ?? max_pos,
+      min_pos: set_min_pos ?? min_pos,
+      max_time: set_max_time ?? max_time,
+      min_time: set_min_time ?? -1 * PLOT_THRESHOLD_OFFSET,
       user_interfaces: user_interfaces_out,
       interfaces: interfaces_out,
       polygons: polygons_out,
@@ -970,7 +988,7 @@ export class ShockwaveDrawer {
       ]]
     );
 
-    if (set_max_pos && set_max_time && set_min_pos && set_min_time) {
+    if (set_max_pos != undefined && set_max_time != undefined && set_min_pos != undefined && set_min_time != undefined) {
       full_polygon = turf.polygon(
         [[
           [set_min_time, set_min_pos],
@@ -1090,6 +1108,7 @@ export class ShockwaveDrawer {
     const out: polygon_t[] = [];
 
     for (const polygon of polygons) {
+      console.log(full_polygon.geometry.coordinates)
       out.push(turf.intersect(turf.featureCollection([polygon, full_polygon])) as polygon_t);
     }
 
