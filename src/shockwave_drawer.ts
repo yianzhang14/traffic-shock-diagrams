@@ -558,23 +558,32 @@ export class ShockwaveDrawer {
   }
 
   public runAndGenerateFigure(
+    simulation_time: number,
     num_trajectories: number, 
     with_trajectories: boolean, 
     with_polygons: boolean, 
-    set_max_time: number,
     set_max_pos?: number, 
+    set_max_time?: number,
+    set_min_pos?: number,
+    set_min_time?: number,
   ): FigureResult {
     try {
-      this.run(set_max_time);
+      this.run(simulation_time);
       const res = this.generateFigure(
-        num_trajectories, with_trajectories, with_polygons, set_max_time, set_max_pos
+        num_trajectories, 
+        with_trajectories, 
+        with_polygons, 
+        set_max_pos, 
+        set_max_time, 
+        set_min_pos, 
+        set_min_time
       );
 
       this.prev = res;
 
-      return res
+      return res;
     } catch (e) {
-      console.error(e)
+      console.error(e);
 
       return this.prev;
     }
@@ -867,7 +876,16 @@ export class ShockwaveDrawer {
     min_pos = Math.min(min_pos, 0) - PLOT_THRESHOLD_OFFSET;
 
     if (with_polygons) {
-      const polygons = this.resolvePolygons(max_time, max_pos, min_pos, undefined, set_max_pos, set_max_time, set_min_pos, set_min_time);
+      const polygons = this.resolvePolygons(
+        max_time, 
+        max_pos, 
+        min_pos,
+        undefined, 
+        set_max_pos,
+        set_max_time,
+        set_min_pos, 
+        set_min_time
+      );
 
       // const line = turf.lineString(
       //   [[-10 * PLOT_THRESHOLD_OFFSET, max_interface_pos], [max_time, max_interface_pos]]
@@ -988,7 +1006,11 @@ export class ShockwaveDrawer {
       ]]
     );
 
-    if (set_max_pos != undefined && set_max_time != undefined && set_min_pos != undefined && set_min_time != undefined) {
+    if (set_max_pos != undefined 
+        && set_max_time != undefined 
+        && set_min_pos != undefined
+        && set_min_time != undefined
+    ) {
       full_polygon = turf.polygon(
         [[
           [set_min_time, set_min_pos],
@@ -997,7 +1019,7 @@ export class ShockwaveDrawer {
           [set_min_time, set_max_pos],
           [set_min_time, set_min_pos]
         ]]
-      )
+      );
     }
 
     const seen = new Set<Pair<dtPoint>>;
@@ -1108,16 +1130,16 @@ export class ShockwaveDrawer {
     const out: polygon_t[] = [];
 
     for (const polygon of polygons) {
-      const intersect = turf.intersect(turf.featureCollection([polygon, full_polygon]))
+      const intersect = turf.intersect(turf.featureCollection([polygon, full_polygon]));
 
-      if (intersect === null || intersect.geometry === undefined) {
+      if (intersect?.geometry === undefined) {
         continue;
       } else if (intersect.geometry.type === "Polygon") {
-        out.push(intersect as polygon_t)
+        out.push(intersect as polygon_t);
       } else if (intersect.geometry.type === "MultiPolygon") {
         intersect.geometry.coordinates.forEach(subPolygon => {
-          out.push(turf.polygon(subPolygon))
-        })
+          out.push(turf.polygon(subPolygon));
+        });
       }
     }
 

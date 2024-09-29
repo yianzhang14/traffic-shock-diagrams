@@ -65,5 +65,5 @@ export const DEFAULT_FIGURERESULT: FigureResult = {
   polygons: [],
   trajectories: [],
   states: []
-}
+};
 
