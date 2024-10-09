@@ -3,19 +3,21 @@ from __future__ import annotations
 import collections
 import copy
 import dataclasses
+import math
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
-import networkx as nx  # type: ignore
 import numpy as np
 import plotly.graph_objects as go  # type: ignore
 import seaborn as sns  # type: ignore
 import shapely as shp  # type: ignore
-from shapely.geometry import LineString, Polygon  # type: ignore
-from shapely.ops import split  # type: ignore
+from matplotlib.collections import PatchCollection
+from matplotlib.patches import PathPatch
+from matplotlib.path import Path
+from shapely.geometry import MultiPolygon, Polygon  # type: ignore
 from sortedcontainers import SortedList  # type: ignore
 
 if TYPE_CHECKING:
@@ -29,6 +31,7 @@ from src.custom_types import (
     GraphInterface,
     GraphLine,
     GraphPolygon,
+    Viewport,
 )
 
 from .drawer_utils import (
@@ -51,6 +54,21 @@ BLACK: Color = (0.0, 0.0, 0.0)
 GREY: Color = (0.5, 0.5, 0.5)
 
 EPS = 1e-2
+
+
+# Plots a Polygon to pyplot `ax`
+def plot_polygon(ax, poly, **kwargs):
+    path = Path.make_compound_path(
+        Path(np.asarray(poly.exterior.coords)[:, :2]),
+        *[Path(np.asarray(ring.coords)[:, :2]) for ring in poly.interiors],
+    )
+
+    patch = PathPatch(path, **kwargs)
+    collection = PatchCollection([patch], **kwargs)
+
+    ax.add_collection(collection, autolim=True)
+    ax.autoscale_view()
+    return collection
 
 
 class ShockwaveDrawer:
@@ -694,8 +712,7 @@ class ShockwaveDrawer:
         with_trajectories=False,
         num_trajectories: int = 100,
         with_polygons=False,
-        max_time: Optional[float] = None,
-        max_pos: Optional[float] = None,
+        viewport: Optional[Viewport] = None,
     ) -> tuple[Figure, Axes]:
         """This function generates a matplotlib figure showing the fundamental digram,
         using the currently generated interfaces stored in self.interfaces.
@@ -714,11 +731,7 @@ class ShockwaveDrawer:
         assert isinstance(ax, Axes)
 
         figure = self._create_figure(
-            num_trajectories,
-            with_trajectories,
-            with_polygons,
-            set_max_time=max_time,
-            set_max_pos=max_pos,
+            num_trajectories, with_trajectories, with_polygons, viewport=viewport
         )
 
         normalizer = mcolors.TwoSlopeNorm(
@@ -776,8 +789,8 @@ class ShockwaveDrawer:
         cb = fig.colorbar(scalarmappable, ax=ax, label="Density scale")
         cb.set_alpha(0.5)
 
-        ax.set_xbound(figure.min_time, figure.max_time)
-        ax.set_ybound(figure.min_pos, figure.max_pos)
+        ax.set_xbound(figure.viewport.min_time, figure.viewport.max_time)
+        ax.set_ybound(figure.viewport.min_pos, figure.viewport.max_pos)
 
         ax.set_title("Shockwave Diagram")
         ax.set_xlabel("Time (seconds)")
@@ -792,8 +805,7 @@ class ShockwaveDrawer:
         num_trajectories: int,
         with_trajectories: bool,
         with_polygons: bool,
-        set_max_pos: Optional[float] = None,
-        set_max_time: Optional[float] = None,
+        viewport: Optional[Viewport] = None,
     ) -> FigureResult:
         color_space = sns.color_palette("tab20", len(self.interfaces))
 
@@ -822,11 +834,10 @@ class ShockwaveDrawer:
         max_interface_pos += 5 * PLOT_THRESHOLD_OFFSET
         max_time = max(max_time, self.simulation_time) + PLOT_THRESHOLD_OFFSET * 5
 
-        if set_max_time:
-            max_time = max(set_max_time, max_time)
-        if set_max_pos:
-            max_interface_pos = max(max_interface_pos, set_max_pos)
-            max_pos = max(max_pos, set_max_pos)
+        if viewport is not None:
+            max_time = max(viewport.max_time, max_time)
+            max_interface_pos = max(max_interface_pos, viewport.max_pos)
+            max_pos = max(max_pos, viewport.max_pos)
 
         for interface in self.interfaces:
             if interface.is_user_generated():
@@ -879,15 +890,23 @@ class ShockwaveDrawer:
                     GraphInterface(p1, p2, color, interface.above, interface.below)
                 )
 
+        default = Viewport(max_time, -PLOT_THRESHOLD_OFFSET, max_pos, min_pos)
+        if viewport is None:
+            viewport = default
+
         if with_trajectories:
             # gap = self.default_state.density
             slope = self.default_state.get_slope()
 
-            for pos in np.linspace(
-                -slope * max_time,
-                max_pos,
-                num_trajectories,
-            ):
+            step = (
+                (viewport.max_pos + slope * viewport.max_time)
+                / self.diagram.init_density
+                / num_trajectories
+            )
+            lower = math.floor(-1 * slope * viewport.max_time)
+            upper = viewport.max_pos
+
+            for pos in np.arange(lower, upper, step):
                 cur_trajectories: list[GraphLine] = []
 
                 try:
@@ -941,68 +960,30 @@ class ShockwaveDrawer:
 
         if with_polygons:
             try:
-                polygons = self._resolve_polygons(max_time, max_pos, min_pos)
+                polygons = self._resolve_polygons(default, viewport)
+
             except TimeoutError:
                 return FigureResult(
-                    max_interface_pos,
-                    min_pos,
-                    max_time,
-                    -PLOT_THRESHOLD_OFFSET,
+                    viewport,
                     user_interfaces_out,
                     interfaces_out,
                     polygons_out,
                     trajectories_out,
                 )
 
-            line = LineString(
-                [(-10 * PLOT_THRESHOLD_OFFSET, max_interface_pos), (max_time, max_interface_pos)]
-            )
-
-            full_polygon = shp.Polygon(
-                [
-                    (-PLOT_THRESHOLD_OFFSET, -PLOT_THRESHOLD_OFFSET),
-                    (-PLOT_THRESHOLD_OFFSET, max_interface_pos),
-                    (max_time, max_interface_pos),
-                    (max_time, -PLOT_THRESHOLD_OFFSET),
-                ]
-            )
-
             for polygon in polygons:
-                pieces = split(polygon, line)
                 midpoint: shp.Point = polygon.representative_point()
-
-                for geom in pieces.geoms:
-                    piece_center: shp.Point = geom.representative_point()
-                    if piece_center.y < midpoint.y:
-                        midpoint = piece_center
 
                 below = self._resolve_state(dtPoint(midpoint.x, midpoint.y))
 
                 label = self.diagram.get_label_for_density(below.density)
 
-                full_polygon = full_polygon.difference(polygon)
-
                 polygons_out.append(
                     GraphPolygon(polygon, below, dtPoint(midpoint.x, midpoint.y), label)
                 )
 
-            full_polygon_point: shp.Point = full_polygon.representative_point()
-            print(full_polygon_point)
-            if not full_polygon_point.is_empty:
-                polygons_out.append(
-                    GraphPolygon(
-                        full_polygon,
-                        self.default_state,
-                        dtPoint(full_polygon_point.x, full_polygon_point.y),
-                        "A",
-                    )
-                )
-
         return FigureResult(
-            max_interface_pos,
-            min_pos,
-            max_time,
-            -PLOT_THRESHOLD_OFFSET,
+            viewport,
             user_interfaces_out,
             interfaces_out,
             polygons_out,
@@ -1166,8 +1147,8 @@ class ShockwaveDrawer:
                 )
 
         fig.update_layout(
-            xaxis=dict(range=[figure.min_time, figure.max_time]),
-            yaxis=dict(range=[figure.min_pos, figure.max_pos]),
+            xaxis=dict(range=[figure.viewport.min_time, figure.viewport.max_time]),
+            yaxis=dict(range=[figure.viewport.min_pos, figure.viewport.max_pos]),
             plot_bgcolor="white",
             autosize=False,
             width=1200,
@@ -1177,24 +1158,20 @@ class ShockwaveDrawer:
         return fig
 
     def _resolve_polygons(
-        self,
-        max_time: float,
-        max_position: float,
-        min_position: float,
-        min_time: float = -PLOT_THRESHOLD_OFFSET,
+        self, full_viewport: Viewport, set_viewport: Optional[Viewport]
     ) -> list[Polygon]:
         graph: collections.defaultdict[dtPoint, set[dtPoint]] = collections.defaultdict(
             lambda: set()
         )
 
-        bottom_left = dtPoint(min_time, min_position)
-        top_left = dtPoint(min_time, max_position)
-        bottom_right = dtPoint(max_time, min_position)
-        top_right = dtPoint(max_time, max_position)
+        bottom_left = dtPoint(full_viewport.min_time, full_viewport.min_pos)
+        top_left = dtPoint(full_viewport.min_time, full_viewport.max_pos)
+        bottom_right = dtPoint(full_viewport.max_time, full_viewport.min_pos)
+        top_right = dtPoint(full_viewport.max_time, position=full_viewport.max_pos)
 
         segments: SortedList[tuple[float, dtPoint]] = SortedList(key=lambda x: x[0])
-        segments.add((min_position, bottom_right))
-        segments.add((max_position, top_right))
+        segments.add((full_viewport.min_pos, bottom_right))
+        segments.add((full_viewport.max_pos, top_right))
 
         for interface in self.interfaces:
             if not interface.has_valid_states():
@@ -1203,11 +1180,11 @@ class ShockwaveDrawer:
             x, y = interface.endpoints
 
             if y.time == float("inf"):
-                y_pos = interface.get_pos_at_time(max_time)
+                y_pos = interface.get_pos_at_time(full_viewport.max_time)
                 assert y_pos
-                y = dtPoint(max_time, y_pos)
+                y = dtPoint(full_viewport.max_time, y_pos)
 
-            if y != top_right and float_isclose(max_time, y.time):
+            if y != top_right and float_isclose(full_viewport.max_time, y.time):
                 segments.add((y.position, y))
 
             graph[x].add(y)
@@ -1232,20 +1209,128 @@ class ShockwaveDrawer:
             graph[below].add(above)
             graph[above].add(below)
 
-        G = nx.Graph()
-
-        for node, neighbors in graph.items():
-            for neighbor in neighbors:
-                G.add_edge(dataclasses.astuple(node), dataclasses.astuple(neighbor))
-
-        cycles: list[list[tuple[float, float]]] = nx.minimum_cycle_basis(G)
         polygons: list[shp.Polygon] = []
-        for cycle in cycles:
-            polygon = Polygon([(x[0], x[1]) for x in cycle])
 
-            if len(cycle) > 2 and not float_isclose(
-                polygon.area, (max_time - min_time) * (max_position - min_position)
-            ):
+        if set_viewport is None:
+            set_viewport = full_viewport
+
+        full_polygon = Polygon(
+            [
+                (set_viewport.min_time, set_viewport.min_pos),
+                (set_viewport.min_time, set_viewport.max_pos),
+                (set_viewport.max_time, set_viewport.max_pos),
+                (set_viewport.max_time, set_viewport.min_pos),
+            ]
+        )
+
+        seen: set[tuple[dtPoint, dtPoint]] = set()
+        for _ in range(2):
+            for point in graph.keys():
+                stack: collections.deque[dtPoint] = collections.deque([point])
+
+                cur = None
+                for neighbor in graph[point]:
+                    if (point, neighbor) not in seen:
+                        cur = neighbor
+                        break
+
+                if cur is None:
+                    continue
+
+                stop = False
+
+                iterations = 0
+                while cur:
+                    stack.append(cur)
+
+                    prev_vec = np.array(
+                        [cur.time - stack[-2].time, cur.position - stack[-2].position]
+                    )
+
+                    max_angle: float = -1
+                    next_point: dtPoint | None = None
+
+                    for neighbor in graph[cur]:
+                        vec = -1 * np.array(
+                            [neighbor.time - cur.time, neighbor.position - cur.position]
+                        )
+
+                        if float_isclose(cast(float, np.linalg.norm(prev_vec)), 0) or float_isclose(
+                            cast(float, np.linalg.norm(vec)), 0
+                        ):
+                            continue
+
+                        expr = (
+                            np.dot(prev_vec, vec) / np.linalg.norm(prev_vec) / np.linalg.norm(vec)
+                        )
+                        angle: float = np.degrees(np.arccos(np.clip(expr, -1, 1)))
+
+                        sign: float = np.sign(prev_vec[0] * vec[1] - prev_vec[1] * vec[0])
+
+                        if sign < 0:
+                            angle = 360 - angle
+
+                        if angle > max_angle:
+                            max_angle = angle
+                            next_point = neighbor
+
+                    if next_point is None or next_point == point:
+                        break
+                    cur = next_point
+
+                    iterations += 1
+
+                    if iterations == len(graph) * 2:
+                        stop = True
+                        break
+
+                if stop:
+                    continue
+
+                for i in range(len(stack) - 1):
+                    seen.add((stack[i], stack[i + 1]))
+                seen.add((stack[-1], stack[0]))
+
+                if len(stack) <= 2:
+                    continue
+                polygon = Polygon([(x.time, x.position) for x in stack])
+
                 polygons.append(polygon)
 
-        return polygons
+        out: list[Polygon] = []
+        for i in range(len(polygons)):
+            try:
+                intersection = full_polygon.intersection(polygons[i])
+
+                fig, ax = plt.subplots()
+                plot_polygon(ax, polygons[i], facecolor="red", alpha=0.5)
+                plot_polygon(ax, full_polygon, facecolor="lightblue", alpha=0.5)
+
+                if intersection.is_empty:
+                    continue
+
+                if isinstance(intersection, Polygon):
+                    plot_polygon(ax, intersection, facecolor="green", alpha=0.5)
+                    out.append(intersection)
+                    temp = intersection.representative_point()
+
+                    ax.plot(temp.x, temp.y, "ro")
+                elif isinstance(intersection, MultiPolygon):
+                    for component in intersection.geoms:
+                        plot_polygon(ax, component, facecolor="green", alpha=0.5)
+                        out.append(component)
+                        temp = component.representative_point()
+                        ax.plot(temp.x, temp.y, "ro")
+
+                fig.show()
+            except Exception as e:
+                print(e)
+                continue
+
+        if len(out) > 1:
+            for i in range(len(out)):
+                if float_isclose(out[i].area, full_polygon.area):
+                    out.pop(i)
+                    break
+
+        return out

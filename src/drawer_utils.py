@@ -80,6 +80,9 @@ class dtPoint:
         """
         return shp.Point(self.time, self.position)
 
+    def astuple(self) -> tuple[float, float]:
+        return (self.time, self.position)
+
     def __hash__(self) -> int:
         return hash((round(self.time, DIGIT_TOLERANCE), round(self.position, DIGIT_TOLERANCE)))
 

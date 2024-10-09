@@ -37,11 +37,16 @@ class GraphPolygon:
 
 
 @dataclass
-class FigureResult:
-    max_pos: float
-    min_pos: float
+class Viewport:
     max_time: float
     min_time: float
+    max_pos: float
+    min_pos: float
+
+
+@dataclass
+class FigureResult:
+    viewport: Viewport
     user_interfaces: list[GraphLine]
     interfaces: list[GraphInterface]
     polygons: list[GraphPolygon]

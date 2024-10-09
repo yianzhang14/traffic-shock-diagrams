@@ -78,8 +78,6 @@ def get_diagram(body: DiagramPostBody) -> Response:
         body.num_trajectories or 100,
         with_trajectories=body.with_trajectories or True,
         with_polygons=body.with_polygons or True,
-        set_max_time=body.max_time,
-        set_max_pos=body.max_pos,
     )
     result: dict[str, Any] = asdict(figure)
 
