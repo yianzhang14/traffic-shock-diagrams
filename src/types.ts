@@ -43,11 +43,15 @@ export interface GraphPolygon {
   label: string
 };
 
-export interface FigureResult {
+export interface Viewport {
   max_pos: number,
   min_pos: number,
   max_time: number,
-  min_time: number,
+  min_time: number
+}
+
+export interface FigureResult {
+  viewport: Viewport,
   user_interfaces: GraphLine[],
   interfaces: GraphInterface[],
   polygons: GraphPolygon[],
@@ -56,10 +60,7 @@ export interface FigureResult {
 };
 
 export const DEFAULT_FIGURERESULT: FigureResult = {
-  max_pos: 0,
-  min_pos: 0,
-  max_time: 0,
-  min_time: 0,
+  viewport: { max_pos: 0, min_pos: 0, max_time: 0, min_time: 0 },
   user_interfaces: [],
   interfaces: [],
   polygons: [],

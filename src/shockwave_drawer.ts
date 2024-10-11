@@ -1,5 +1,5 @@
 import * as turf from "@turf/turf";
-import { acos, dot, max, norm, pi, sign, sum } from "mathjs";
+import { acos, dot, norm, pi, sign, } from "mathjs";
 import polylabel from "polylabel";
 import { Dictionary, Set, PriorityQueue, DefaultDictionary } from "typescript-collections";
 
@@ -21,7 +21,7 @@ import {
 } from "./drawer_utils";
 import { FundamentalDiagram } from "./fundamental_diagram";
 import { calculateArea, clip, debug_log } from "./misc";
-import { DEFAULT_FIGURERESULT, polygon_t } from "./types";
+import { DEFAULT_FIGURERESULT, polygon_t, Viewport } from "./types";
 import { FigureResult, GraphInterface, GraphLine, GraphPolygon, GraphTrajectory, Pair } from "./types";
 
 const EPS = 1e-4;
@@ -562,10 +562,7 @@ export class ShockwaveDrawer {
     num_trajectories: number, 
     with_trajectories: boolean, 
     with_polygons: boolean, 
-    set_max_pos?: number, 
-    set_max_time?: number,
-    set_min_pos?: number,
-    set_min_time?: number,
+    viewport?: Viewport
   ): FigureResult {
     try {
       this.run(simulation_time);
@@ -573,10 +570,7 @@ export class ShockwaveDrawer {
         num_trajectories, 
         with_trajectories, 
         with_polygons, 
-        set_max_pos, 
-        set_max_time, 
-        set_min_pos, 
-        set_min_time
+        viewport
       );
 
       this.prev = res;
@@ -710,10 +704,7 @@ export class ShockwaveDrawer {
     num_trajectories: number, 
     with_trajectories: boolean, 
     with_polygons: boolean, 
-    set_max_pos?: number, 
-    set_max_time?: number,
-    set_min_pos?: number,
-    set_min_time?: number,
+    viewport?: Viewport
   ): FigureResult {
     const user_interfaces_out: GraphLine[] = [];
     const interfaces_out: GraphInterface[] = [];
@@ -741,13 +732,11 @@ export class ShockwaveDrawer {
 
     max_interface_pos += 5 * PLOT_THRESHOLD_OFFSET;
     max_time = Math.max(max_time, this.simulation_time!) + PLOT_THRESHOLD_OFFSET;
-    
-    if (set_max_time) {
-      max_time = Math.max(set_max_time, max_time);
-    }
-    if (set_max_pos) {
-      max_interface_pos = Math.max(max_interface_pos, set_max_pos);
-      max_pos = Math.max(max_pos, set_max_pos);
+
+    if (viewport !== undefined) {
+      max_time = Math.max(max_time, viewport.max_time);
+      max_interface_pos = Math.max(max_interface_pos, viewport.max_pos);
+      max_pos = Math.max(max_pos, viewport.max_pos);
     }
 
     for (const diagram_interface of this.interfaces) {
@@ -792,17 +781,26 @@ export class ShockwaveDrawer {
       }
     }
 
+    const default_viewport: Viewport = {
+      max_time,
+      min_time: -1 * PLOT_THRESHOLD_OFFSET,
+      max_pos,
+      min_pos
+    };
+    if (viewport === undefined) {
+      viewport = default_viewport;
+    }
+
     if (with_trajectories && this.diagram.init_density !== 0) {
       const slope = this.default_state.getSlope();
 
       const step = (
-        ((set_max_pos ?? max_pos) + slope * (set_max_time ?? max_time)) / num_trajectories
+        (viewport.max_pos + slope * viewport.max_time) / num_trajectories
       );
       for (let pos = 
-        Math.floor(-1 * slope * (set_max_time ?? max_time) / (1 / this.diagram.init_density * step))
-         * (1 / this.diagram.init_density * step);
-        pos <= (set_max_pos ?? max_pos); 
-        pos += 1 / this.diagram.init_density * step
+        Math.floor(-1 * slope * viewport.max_time);
+        pos <= viewport.max_pos; 
+        pos += step / this.diagram.init_density
       ) {
         const cur_trajectories: GraphLine[] = [];
         try {
@@ -877,14 +875,7 @@ export class ShockwaveDrawer {
 
     if (with_polygons) {
       const polygons = this.resolvePolygons(
-        max_time, 
-        max_pos, 
-        min_pos,
-        undefined, 
-        set_max_pos,
-        set_max_time,
-        set_min_pos, 
-        set_min_time
+        default_viewport, viewport
       );
 
       // const line = turf.lineString(
@@ -907,10 +898,7 @@ export class ShockwaveDrawer {
     }
 
     return {
-      max_pos: set_max_pos ?? max_pos,
-      min_pos: set_min_pos ?? min_pos,
-      max_time: set_max_time ?? max_time,
-      min_time: set_min_time ?? -1 * PLOT_THRESHOLD_OFFSET,
+      viewport,
       user_interfaces: user_interfaces_out,
       interfaces: interfaces_out,
       polygons: polygons_out,
@@ -920,27 +908,21 @@ export class ShockwaveDrawer {
   }
 
   private resolvePolygons(
-    max_time: number, 
-    max_position: number, 
-    min_position: number, 
-    min_time: number = -PLOT_THRESHOLD_OFFSET,
-    set_max_pos?: number,
-    set_max_time?: number,
-    set_min_pos?: number,
-    set_min_time?: number,
+    full_viewport: Viewport,
+    set_viewport?: Viewport
   ): polygon_t[] {
     const graph = new DefaultDictionary<dtPoint, Set<dtPoint>>(
       () => { return new Set<dtPoint>(); }
     );
     
-    const bottom_left = new dtPoint(min_time, min_position);
-    const top_left = new dtPoint(min_time, max_position);
-    const bottom_right = new dtPoint(max_time, min_position);
-    const top_right = new dtPoint(max_time, max_position);
+    const bottom_left = new dtPoint(full_viewport.min_time, full_viewport.min_pos);
+    const top_left = new dtPoint(full_viewport.min_time, full_viewport.max_pos);
+    const bottom_right = new dtPoint(full_viewport.max_time, full_viewport.min_pos);
+    const top_right = new dtPoint(full_viewport.max_time, full_viewport.max_pos);
 
     const segments: [number, dtPoint][] = [];
-    segments.push([min_position, bottom_right]);
-    segments.push([max_position, top_right]);
+    segments.push([full_viewport.min_pos, bottom_right]);
+    segments.push([full_viewport.max_pos, top_right]);
 
     for (const diagram_interface of this.interfaces) {
       if (!diagram_interface.hasValidStates()) {
@@ -951,16 +933,16 @@ export class ShockwaveDrawer {
       let y = diagram_interface.upper_bound;
 
       if (y.time === Infinity) {
-        const y_pos = diagram_interface.getPosAtTime(max_time);
+        const y_pos = diagram_interface.getPosAtTime(full_viewport.max_time);
 
         if (y_pos === undefined ){
           throw new TypeError("Polygon y pos should not be undefined");
         }
 
-        y = new dtPoint(max_time, y_pos);
+        y = new dtPoint(full_viewport.max_time, y_pos);
       }
 
-      if (!y.equalTo(top_right) && float_isclose(max_time, y.time)) {
+      if (!y.equalTo(top_right) && float_isclose(full_viewport.max_time, y.time)) {
         segments.push([y.position, y]);
       }
 
@@ -993,34 +975,20 @@ export class ShockwaveDrawer {
       graph.getValue(above).add(below);
     }
 
-    debug_log(max_position, min_position);
+    if (set_viewport === undefined) {
+      set_viewport = full_viewport;
+    }
 
     const polygons: polygon_t[] = [];
-    let full_polygon = turf.polygon(
+    const full_polygon: polygon_t = turf.polygon(
       [[
-        bottom_left.toArray(), 
-        bottom_right.toArray(), 
-        top_right.toArray(), 
-        top_left.toArray(), 
-        bottom_left.toArray()
+        [set_viewport.min_time, set_viewport.min_pos],
+        [set_viewport.min_time, set_viewport.max_pos],
+        [set_viewport.max_time, set_viewport.max_pos],
+        [set_viewport.max_time, set_viewport.min_time],
+        [set_viewport.min_time, set_viewport.min_pos],
       ]]
     );
-
-    if (set_max_pos != undefined 
-        && set_max_time != undefined 
-        && set_min_pos != undefined
-        && set_min_time != undefined
-    ) {
-      full_polygon = turf.polygon(
-        [[
-          [set_min_time, set_min_pos],
-          [set_max_time, set_min_pos],
-          [set_max_time, set_max_pos],
-          [set_min_time, set_max_pos],
-          [set_min_time, set_min_pos]
-        ]]
-      );
-    }
 
     const seen = new Set<Pair<dtPoint>>;
 
@@ -1112,21 +1080,6 @@ export class ShockwaveDrawer {
       }
     }
 
-    if (polygons.length > 1) {
-      const areas = polygons.map((poly) => calculateArea(poly));
-      const maxArea = max(areas);
-      const complement = sum(areas) - maxArea;
-
-      if (float_isclose(maxArea, complement)) {
-        for (let i = 0; i < polygons.length; i++) {
-          if (float_isclose(areas[i], maxArea)) {
-            polygons.splice(i, 1);
-            break;
-          }
-        }
-      }
-    }
-
     const out: polygon_t[] = [];
 
     for (const polygon of polygons) {
@@ -1140,6 +1093,15 @@ export class ShockwaveDrawer {
         intersect.geometry.coordinates.forEach(subPolygon => {
           out.push(turf.polygon(subPolygon));
         });
+      }
+    }
+
+    if (out.length > 1) {
+      for (let i = 0; i < out.length; i++) {
+        if (float_isclose(calculateArea(out[i]), calculateArea(full_polygon))) {
+          out.splice(i, 1);
+          break;
+        }
       }
     }
 
