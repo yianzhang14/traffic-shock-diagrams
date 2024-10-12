@@ -512,7 +512,7 @@ export class ShockwaveDrawer {
     }
 
     for (const diagram_interface of interfaces) {
-      if (diagram_interface === cur.user_interface) {
+      if (diagram_interface.equivalentTo(cur.user_interface)) {
         continue;
       }
 
@@ -522,6 +522,8 @@ export class ShockwaveDrawer {
     // if the user interface has not already been processed (it doesn't have valid states), create a new capacity event for when it "starts"
     if (!cur.user_interface.hasValidStates()) {
       debug_log("converting to capacity event");
+
+      cur.user_interface.addCutoff(cur.point);
 
       this.handleCapacityEvent(
         new CapacityEvent(
@@ -552,6 +554,10 @@ export class ShockwaveDrawer {
       );
 
       if (state_created) {
+        for (const diagram_interface of interfaces) {
+          diagram_interface.addCutoff(undefined, cur.point);
+        }
+        
         cur.user_interface.addCutoff(undefined, cur.point);
       }
     }
