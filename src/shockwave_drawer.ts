@@ -885,7 +885,6 @@ export class ShockwaveDrawer {
           points: polygon.geometry.coordinates[0].map(([x, y]) => new dtPoint(x, y)),
           state: below,
           point: midpoint_dt,
-          label: "A"
         });
       }
     }

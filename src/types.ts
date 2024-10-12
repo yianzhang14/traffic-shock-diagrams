@@ -40,7 +40,7 @@ export interface GraphPolygon {
   points: dtPoint[],
   state: State,
   point: dtPoint,
-  label: string
+  // label: string
 };
 
 export interface Viewport {
