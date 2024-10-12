@@ -719,7 +719,7 @@ export class ShockwaveDrawer {
 
     let max_pos = -1;
     let max_time = -1;
-    // let min_pos = Infinity;
+    let min_pos = Infinity;
     // let min_time = Infinity;
 
     for (const diagram_interface of this.interfaces) {
@@ -750,11 +750,11 @@ export class ShockwaveDrawer {
       const p1 = diagram_interface.lower_bound;
       let p2 = diagram_interface.upper_bound;
 
-      // min_pos = Math.min(min_pos, p1.position);
+      min_pos = Math.min(min_pos, p1.position);
 
-      // if (p2.time !== Infinity) {
-      //   min_pos = Math.min(min_pos, p1.position);
-      // }
+      if (p2.time !== Infinity) {
+        min_pos = Math.min(min_pos, p1.position);
+      }
 
       if (p2.time === Infinity) {
         const pos = diagram_interface.getPosAtTime(max_time);
@@ -777,13 +777,13 @@ export class ShockwaveDrawer {
       }
     }
 
-    // min_pos = Math.min(min_pos, -1 * PLOT_THRESHOLD_OFFSET);
+    min_pos = Math.min(min_pos, -1 * PLOT_THRESHOLD_OFFSET);
 
     const default_viewport: Viewport = {
       max_time: Math.max(max_time, viewport?.max_time ?? -1 * Infinity),
       min_time: Math.min(-1 * PLOT_THRESHOLD_OFFSET, (viewport?.min_time ?? Infinity)),
       max_pos: Math.max(max_pos, viewport?.max_pos ?? -1 * Infinity),
-      min_pos: Math.min(-1 * PLOT_THRESHOLD_OFFSET, (viewport?.min_pos ?? Infinity))
+      min_pos: Math.min(min_pos, (viewport?.min_pos ?? Infinity))
     };
     
     if (viewport === undefined) {
