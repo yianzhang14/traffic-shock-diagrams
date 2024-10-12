@@ -719,29 +719,19 @@ export class ShockwaveDrawer {
 
     let max_pos = -1;
     let max_time = -1;
-    let min_pos = Infinity;
-    let max_interface_pos = -1;
+    // let min_pos = Infinity;
+    // let min_time = Infinity;
 
     for (const diagram_interface of this.interfaces) {
       const p1: dtPoint = diagram_interface.lower_bound;
 
       max_time = Math.max(max_time, p1.time);
-
-      if (diagram_interface.isUserGenerated()) {
-        max_interface_pos = Math.max(
-          max_interface_pos,
-          diagram_interface.lower_bound.position,
-          diagram_interface.upper_bound.position
-        );
-      }
     }
 
-    max_interface_pos += 5 * PLOT_THRESHOLD_OFFSET;
     max_time = Math.max(max_time, this.simulation_time!) + PLOT_THRESHOLD_OFFSET;
 
     if (viewport !== undefined) {
       max_time = Math.max(max_time, viewport.max_time);
-      max_interface_pos = Math.max(max_interface_pos, viewport.max_pos);
       max_pos = Math.max(max_pos, viewport.max_pos);
     }
 
@@ -760,11 +750,11 @@ export class ShockwaveDrawer {
       const p1 = diagram_interface.lower_bound;
       let p2 = diagram_interface.upper_bound;
 
-      min_pos = Math.min(min_pos, p1.position);
+      // min_pos = Math.min(min_pos, p1.position);
 
-      if (p2.time !== Infinity) {
-        min_pos = Math.min(min_pos, p1.position);
-      }
+      // if (p2.time !== Infinity) {
+      //   min_pos = Math.min(min_pos, p1.position);
+      // }
 
       if (p2.time === Infinity) {
         const pos = diagram_interface.getPosAtTime(max_time);
@@ -787,12 +777,15 @@ export class ShockwaveDrawer {
       }
     }
 
+    // min_pos = Math.min(min_pos, -1 * PLOT_THRESHOLD_OFFSET);
+
     const default_viewport: Viewport = {
-      max_time,
-      min_time: -1 * PLOT_THRESHOLD_OFFSET,
-      max_pos,
-      min_pos
+      max_time: Math.max(max_time, viewport?.max_time ?? -1 * Infinity),
+      min_time: Math.min(-1 * PLOT_THRESHOLD_OFFSET, (viewport?.min_time ?? Infinity)),
+      max_pos: Math.max(max_pos, viewport?.max_pos ?? -1 * Infinity),
+      min_pos: Math.min(-1 * PLOT_THRESHOLD_OFFSET, (viewport?.min_pos ?? Infinity))
     };
+    
     if (viewport === undefined) {
       viewport = default_viewport;
     }
@@ -877,16 +870,10 @@ export class ShockwaveDrawer {
       }
     }
 
-    min_pos = Math.min(min_pos, 0) - PLOT_THRESHOLD_OFFSET;
-
     if (with_polygons) {
       const polygons = this.resolvePolygons(
         default_viewport, viewport
       );
-
-      // const line = turf.lineString(
-      //   [[-10 * PLOT_THRESHOLD_OFFSET, max_interface_pos], [max_time, max_interface_pos]]
-      // );
 
       for (const polygon of polygons) {
         const midpoint = polylabel(polygon.geometry.coordinates);
