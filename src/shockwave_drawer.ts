@@ -21,7 +21,7 @@ import {
 } from "./drawer_utils";
 import { FundamentalDiagram } from "./fundamental_diagram";
 import { calculateArea, clip, debug_log } from "./misc";
-import { DEFAULT_FIGURERESULT, polygon_t, Viewport } from "./types";
+import { polygon_t, Viewport } from "./types";
 import { FigureResult, GraphInterface, GraphLine, GraphPolygon, GraphTrajectory, Pair } from "./types";
 
 const EPS = 1e-4;
@@ -36,7 +36,7 @@ const PLOT_THRESHOLD_OFFSET = 1;
 export class ShockwaveDrawer {
   private diagram: FundamentalDiagram;
   private default_state: State;
-  private augments: CapacityBottleneck[];
+  private augments: CapacityBottleneck[] = [];
 
   private events = new PriorityQueue<Event>(Event.compareTo);
   private interfaces: DiagramInterface[] = [];
@@ -46,8 +46,6 @@ export class ShockwaveDrawer {
 
   private simulation_time: number | undefined;
 
-  private prev: FigureResult = DEFAULT_FIGURERESULT;
-
 
   /**
      * Creates an instance of ShockwaveDrawer.
@@ -56,10 +54,9 @@ export class ShockwaveDrawer {
      * @param {CapacityBottleneck[]} augments list of augments to consider
      * @memberof ShockwaveDrawer
      */
-  constructor(diagram: FundamentalDiagram, augments: CapacityBottleneck[]) {
+  constructor(diagram: FundamentalDiagram) {
     this.diagram = diagram;
     this.default_state = this.diagram.getInitialState();
-    this.augments = augments;
   }
 
   /**
@@ -68,7 +65,9 @@ export class ShockwaveDrawer {
      * @private
      * @memberof ShockwaveDrawer
      */
-  private setup(): void {
+  private setup(augments: CapacityBottleneck[]): void {
+    this.augments = augments;
+
     // clear everything
     this.events.clear();
     this.interfaces = [];
@@ -563,34 +562,8 @@ export class ShockwaveDrawer {
     }
   }
 
-  public runAndGenerateFigure(
-    simulation_time: number,
-    num_trajectories: number, 
-    with_trajectories: boolean, 
-    with_polygons: boolean, 
-    viewport?: Viewport
-  ): FigureResult {
-    try {
-      this.run(simulation_time);
-      const res = this.generateFigure(
-        num_trajectories, 
-        with_trajectories, 
-        with_polygons, 
-        viewport
-      );
-
-      this.prev = res;
-
-      return res;
-    } catch (e) {
-      console.error(e);
-
-      return this.prev;
-    }
-  }
-
-  public run(simulation_time: number): void {
-    this.setup();
+  public run(simulation_time: number, augments: CapacityBottleneck[]): void {
+    this.setup(augments);
 
     this.simulation_time = simulation_time;
 
