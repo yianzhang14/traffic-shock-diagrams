@@ -548,15 +548,15 @@ class ShockwaveDrawer:
 
         self.truncations.pop(cur.point)
 
+        if cur.user_interface.get_pos_at_time(cur.point.time) is None:
+            return
+
         interfaces: list[Interface] = []
 
         for interface in cur.interfaces:
             if interface.get_pos_at_time(cur.point.time) is None:
                 continue
             interfaces.append(interface)
-
-        if cur.user_interface.get_pos_at_time(cur.point.time) is None:
-            return
 
         if len(interfaces) == 0:
             return
@@ -906,12 +906,12 @@ class ShockwaveDrawer:
             lower = math.floor(-1 * slope * viewport.max_time)
             upper = viewport.max_pos
 
-            for pos in np.arange(lower, upper, step):
+            for start in np.arange(lower, upper, step):
                 cur_trajectories: list[GraphLine] = []
 
                 try:
-                    assert isinstance(pos, float)
-                    cur = Trajectory(dtPoint(0, pos + 0.1), slope)
+                    assert isinstance(start, float)
+                    cur = Trajectory(dtPoint(0, start + 0.1), slope)
 
                     while True:
                         x = self._find_closest_intersection_traj(cur)

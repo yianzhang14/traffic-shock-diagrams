@@ -1,1 +1,2 @@
-*.ipynb -linguist-detectable
+# GitHub syntax highlighting
+pixi.lock linguist-language=YAML linguist-generated=true

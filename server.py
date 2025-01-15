@@ -2,7 +2,7 @@ from dataclasses import asdict
 from typing import Any, Optional
 
 from flask import Flask, Response, jsonify
-from flask_cors import CORS
+from flask_cors import CORS  # type: ignore
 from flask_pydantic import validate  # type: ignore
 from pydantic import BaseModel
 
