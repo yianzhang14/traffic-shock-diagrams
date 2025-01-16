@@ -1301,29 +1301,29 @@ class ShockwaveDrawer:
         out: list[Polygon] = []
         for i in range(len(polygons)):
             try:
-                intersection = full_polygon.intersection(polygons[i])
+                # fig, ax = plt.subplots()
+                # plot_polygon(ax, polygons[i], facecolor="red", alpha=0.5)
+                # plot_polygon(ax, full_polygon, facecolor="lightblue", alpha=0.5)
 
-                fig, ax = plt.subplots()
-                plot_polygon(ax, polygons[i], facecolor="red", alpha=0.5)
-                plot_polygon(ax, full_polygon, facecolor="lightblue", alpha=0.5)
+                intersection = full_polygon.intersection(shp.make_valid(polygons[i]))
 
                 if intersection.is_empty:
                     continue
 
                 if isinstance(intersection, Polygon):
-                    plot_polygon(ax, intersection, facecolor="green", alpha=0.5)
+                    # plot_polygon(ax, intersection, facecolor="green", alpha=0.5)
                     out.append(intersection)
-                    temp = intersection.representative_point()
+                    # temp = intersection.representative_point()
 
-                    ax.plot(temp.x, temp.y, "ro")
+                    # ax.plot(temp.x, temp.y, "ro")
                 elif isinstance(intersection, MultiPolygon):
                     for component in intersection.geoms:
-                        plot_polygon(ax, component, facecolor="green", alpha=0.5)
+                        # plot_polygon(ax, component, facecolor="green", alpha=0.5)
                         out.append(component)
-                        temp = component.representative_point()
-                        ax.plot(temp.x, temp.y, "ro")
+                        # temp = component.representative_point()
+                        # ax.plot(temp.x, temp.y, "ro")
 
-                fig.show()
+                # fig.show()
             except Exception as e:
                 print(e)
                 continue
