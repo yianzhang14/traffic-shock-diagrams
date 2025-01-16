@@ -950,7 +950,7 @@ export class ShockwaveDrawer {
         [set_viewport.min_time, set_viewport.min_pos],
         [set_viewport.min_time, set_viewport.max_pos],
         [set_viewport.max_time, set_viewport.max_pos],
-        [set_viewport.max_time, set_viewport.min_time],
+        [set_viewport.max_time, set_viewport.min_pos],
         [set_viewport.min_time, set_viewport.min_pos],
       ]]
     );
