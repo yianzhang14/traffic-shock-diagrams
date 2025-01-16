@@ -85,7 +85,6 @@ class ShockwaveDrawer:
 
         Args:
             diagram (FundamentalDiagram): the fundamental diagram under consideration
-            simulation_time (float): how long to run the simulation for (seconds)
             augments (list[TrafficLight]): the things generating CapacityEvents that generate
             shockwaves
 
@@ -832,7 +831,7 @@ class ShockwaveDrawer:
                 )
 
         max_interface_pos += 5 * PLOT_THRESHOLD_OFFSET
-        max_time = max(max_time, self.simulation_time) + PLOT_THRESHOLD_OFFSET * 5
+        max_time = max(max_time, self.simulation_time) + PLOT_THRESHOLD_OFFSET
 
         if viewport is not None:
             max_time = max(viewport.max_time, max_time)
@@ -889,6 +888,8 @@ class ShockwaveDrawer:
                 interfaces_out.append(
                     GraphInterface(p1, p2, color, interface.above, interface.below)
                 )
+
+        min_pos = min(min_pos, -1 * PLOT_THRESHOLD_OFFSET)
 
         default = Viewport(max_time, -PLOT_THRESHOLD_OFFSET, max_pos, min_pos)
         if viewport is None:
