@@ -122,7 +122,7 @@ class Event(ABC):
         """
         if not isinstance(other, Event):
             raise NotImplementedError
-        return self.point == other.point and type(self) == type(other)
+        return self.point == other.point and type(self) is type(other)
 
     def __lt__(self, other: Event) -> bool:
         """Overload of the less than operator for events. One event is less than another
@@ -437,6 +437,41 @@ class Interface:  # boundary between two states
             return None
 
         return self.point.position + self.slope * (time - self.point.time)
+
+    def get_time_at_pos(self, pos: float) -> Optional[float]:
+        """Gets the time at which an interface reaches a position, if one exists
+
+        Args:
+            pos (float): positions to query
+
+        Returns:
+            Optional[float]: time at which interface reaches pos, if defined
+        """
+
+        # determine the range of possible positions of a segment (using linearity of interfaces)
+        pos1 = self.endpoints[0].position
+        pos2 = self.endpoints[1].position
+
+        if pos2 == float("inf"):
+            if float_isclose(self.slope, 0):
+                pos2 = pos1
+            elif self.slope > 0:
+                pos2 = float("inf")
+            elif self.slope < 0:
+                pos2 = float("-inf")
+
+        # interface reaches pos if it sandwiches the target pos
+        valid = (
+            float_isclose(pos1, pos)
+            or float_isclose(pos2, pos)
+            or (min(pos1, pos2) < pos and max(pos1, pos2) > pos)
+        )
+
+        if not valid:
+            return None
+
+        # i.e., the inverse of get_pos_at_time
+        return (pos - self.point.position) / self.slope + self.point.time
 
     def add_cutoff(self, lower: Optional[dtPoint] = None, upper: Optional[dtPoint] = None):
         """Adds a cutoff to the interface. The points must be along the line defined by

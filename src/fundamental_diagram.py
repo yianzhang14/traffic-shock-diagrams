@@ -83,7 +83,6 @@ class FundamentalDiagram:
         """
 
         fig, ax = plt.subplots()
-        assert isinstance(ax, Axes)
 
         x = np.linspace(0, self.jam_density, num=100)
         y = [self.func(x) for x in x]

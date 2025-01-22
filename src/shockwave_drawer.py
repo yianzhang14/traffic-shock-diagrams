@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import collections
 import copy
 import dataclasses
 import math
@@ -19,6 +18,9 @@ from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 from shapely.geometry import MultiPolygon, Polygon  # type: ignore
 from sortedcontainers import SortedList  # type: ignore
+
+from src.custom_types import ArrangementEdge
+from src.geometry import SegmentArrangement
 
 if TYPE_CHECKING:
     from src.augmenters.base_augmenter import CapacityBottleneck
@@ -345,7 +347,6 @@ class ShockwaveDrawer:
         # if we have an increase in capacity and there is not enough density (queuing)
         # to take advantage of that increase, do nothing -- no interface created
         # this applies to 0 into 0 since posterior and prior both 0
-        print(prior_capacity, posterior_capacity, above, below)
         if (
             posterior_capacity > prior_capacity or float_isclose(posterior_capacity, prior_capacity)
         ) and (not self.diagram.state_is_queued(below) or above == below):
@@ -377,8 +378,6 @@ class ShockwaveDrawer:
                     below,
                     lower_bound=cur.point,
                 )
-
-                print(main_interface)
 
                 self._add_interface(main_interface)
 
@@ -424,8 +423,6 @@ class ShockwaveDrawer:
                     lower_bound=cur.point,
                 )
 
-                print(byproduct_interface)
-
                 self._add_interface(byproduct_interface)
 
                 if float_isclose(byproduct_interface.slope, interface_slope):
@@ -449,8 +446,6 @@ class ShockwaveDrawer:
 
             else:
                 cur.interface.set_above_state(above)
-
-            print(main_interface_state, byproduct_interface_state)
 
             return state_created
 
@@ -570,8 +565,6 @@ class ShockwaveDrawer:
         if not cur.user_interface.has_valid_states():
             # extract prior/post capacity to inform the capacity event
             # prior_cap, post_cap = self.latent_events.pop(cur.user_interface)
-            print("converting to capacity event")
-
             cur.user_interface.add_cutoff(lower=cur.point)
 
             # handle the capacity event using the information we have
@@ -584,8 +577,6 @@ class ShockwaveDrawer:
                 ),
             )
         elif cur.user_interface.has_valid_states():
-            print("handling right truncation event")
-
             # self.latent_events[cur.user_interface] = (-1, cur.user_interface.augment.bottleneck)
             new_interface = copy.deepcopy(cur.user_interface)
             self.interfaces.append(new_interface)
@@ -616,8 +607,6 @@ class ShockwaveDrawer:
             # get the first event (first event in time)
             time: float = self.events[0].point.time
 
-            print(f"processing events at time {time}")
-
             pos_queue: SortedList[tuple[int, float, Event]] = SortedList()
 
             while self.events and float_isclose(self.events[0].point.time, time):
@@ -645,8 +634,6 @@ class ShockwaveDrawer:
                     continue
 
                 prev_num_interfaces = len(self.interfaces)
-
-                print(f"processing {event}")
 
                 # handle the vent based on its type
                 match event.type:
@@ -727,11 +714,13 @@ class ShockwaveDrawer:
         """
 
         fig, ax = plt.subplots(figsize=(20, 10))
-        assert isinstance(ax, Axes)
 
         figure = self._create_figure(
-            num_trajectories, with_trajectories, with_polygons, viewport=viewport
+            num_trajectories, with_trajectories, with_polygons, set_viewport=viewport
         )
+
+        if viewport is None:
+            viewport = figure.viewport
 
         normalizer = mcolors.TwoSlopeNorm(
             self.diagram.capacity_density, vmin=0, vmax=self.diagram.jam_density
@@ -788,8 +777,8 @@ class ShockwaveDrawer:
         cb = fig.colorbar(scalarmappable, ax=ax, label="Density scale")
         cb.set_alpha(0.5)
 
-        ax.set_xbound(figure.viewport.min_time, figure.viewport.max_time)
-        ax.set_ybound(figure.viewport.min_pos, figure.viewport.max_pos)
+        ax.set_xbound(viewport.min_time, viewport.max_time)
+        ax.set_ybound(viewport.min_pos, viewport.max_pos)
 
         ax.set_title("Shockwave Diagram")
         ax.set_xlabel("Time (seconds)")
@@ -804,7 +793,7 @@ class ShockwaveDrawer:
         num_trajectories: int,
         with_trajectories: bool,
         with_polygons: bool,
-        viewport: Optional[Viewport] = None,
+        set_viewport: Optional[Viewport] = None,
     ) -> FigureResult:
         color_space = sns.color_palette("tab20", len(self.interfaces))
 
@@ -813,31 +802,39 @@ class ShockwaveDrawer:
         trajectories_out: list[list[GraphLine]] = []
         polygons_out: list[GraphPolygon] = []
 
-        max_pos: float = -1
-        max_time: float = -1
-        min_pos = float("inf")
-        max_interface_pos: float = -1
+        # defining the ideal viewport to hold everything in the diagram
+        # assume min_time is 0 by convention (no such thing as negative time)
+        max_pos: float = -1  # maximum position of all interfaces at max_time
+        max_time: float = -1  # maximum time of the lhs of every interface
+        min_pos: float = (
+            -PLOT_THRESHOLD_OFFSET
+        )  # min pos of all interfaces at max_time (-1 by default)
+        min_time: float = -PLOT_THRESHOLD_OFFSET  # min time of all interfaces (-1 by default)
 
+        # get baseline bounds using the left endpoints of each interface
         for interface in self.interfaces:
             p1 = interface.endpoints[0]
 
             max_time = max(max_time, p1.time)
+            min_pos = min(min_pos, p1.position)
+            max_pos = max(max_pos, p1.position)
+            min_time = min(min_time, p1.time)
 
-            if interface.is_user_generated():
-                max_interface_pos = max(
-                    max_interface_pos,
-                    interface.endpoints[0].position,
-                    interface.endpoints[1].position,
-                )
+        # offset to allow things to fit comfortably
+        max_time = math.ceil(max_time * 1.2)
 
-        max_interface_pos += 5 * PLOT_THRESHOLD_OFFSET
-        max_time = max(max_time, self.simulation_time) + PLOT_THRESHOLD_OFFSET
+        max_time += PLOT_THRESHOLD_OFFSET
+        min_time -= PLOT_THRESHOLD_OFFSET
 
-        if viewport is not None:
-            max_time = max(viewport.max_time, max_time)
-            max_interface_pos = max(max_interface_pos, viewport.max_pos)
-            max_pos = max(max_pos, viewport.max_pos)
+        # account for a set viewport---expand to include it, if needed
+        if set_viewport is not None:
+            max_time = max(set_viewport.max_time, max_time)
+            max_pos = max(max_pos, set_viewport.max_pos)
+            min_pos = min(min_pos, set_viewport.min_pos)
+            min_time = min(min_time, set_viewport.min_time)
 
+        # collect all interfaces to be drawn, truncating as necessary
+        # also adjust bounds using right endpoints, with infinites being truncated
         for interface in self.interfaces:
             if interface.is_user_generated():
                 user_interfaces_out.append(
@@ -855,9 +852,8 @@ class ShockwaveDrawer:
             p1 = interface.endpoints[0]
             p2 = interface.endpoints[1]
 
-            min_pos = min(min_pos, p1.position)
-
             if p2.time != float("inf"):
+                max_pos = max(max_pos, p2.position)
                 min_pos = min(min_pos, p2.position)
 
             if p2.time == float("inf"):
@@ -865,6 +861,7 @@ class ShockwaveDrawer:
                 assert pos is not None
 
                 max_pos = max(max_pos, pos)
+                min_pos = min(min_pos, pos)
                 p2 = dtPoint(
                     max_time,
                     pos,
@@ -889,21 +886,26 @@ class ShockwaveDrawer:
                     GraphInterface(p1, p2, color, interface.above, interface.below)
                 )
 
-        min_pos = min(min_pos, -1 * PLOT_THRESHOLD_OFFSET)
+        # explicitly construct the ideal, default viewport
+        viewport = Viewport(
+            max_time,
+            min_time,
+            max_pos + PLOT_THRESHOLD_OFFSET,
+            min_pos - PLOT_THRESHOLD_OFFSET,
+        )
 
-        default = Viewport(max_time, -PLOT_THRESHOLD_OFFSET, max_pos, min_pos)
-        if viewport is None:
-            viewport = default
-
+        # process trajectories
         if with_trajectories:
-            # gap = self.default_state.density
             slope = self.default_state.get_slope()
 
+            # step is affected by desired number of trajectories, scaled by initial density
             step = (
                 (viewport.max_pos + slope * viewport.max_time)
                 / self.diagram.init_density
                 / num_trajectories
             )
+
+            # positions to start drawing lines at to cover the whole viewport
             lower = math.floor(-1 * slope * viewport.max_time)
             upper = viewport.max_pos
 
@@ -960,17 +962,7 @@ class ShockwaveDrawer:
         min_pos = min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
 
         if with_polygons:
-            try:
-                polygons = self._resolve_polygons(default, viewport)
-
-            except TimeoutError:
-                return FigureResult(
-                    viewport,
-                    user_interfaces_out,
-                    interfaces_out,
-                    polygons_out,
-                    trajectories_out,
-                )
+            polygons = self._resolve_polygons(viewport)
 
             for polygon in polygons:
                 midpoint: shp.Point = polygon.representative_point()
@@ -1158,145 +1150,95 @@ class ShockwaveDrawer:
 
         return fig
 
-    def _resolve_polygons(
-        self, full_viewport: Viewport, set_viewport: Optional[Viewport]
-    ) -> list[Polygon]:
-        graph: collections.defaultdict[dtPoint, set[dtPoint]] = collections.defaultdict(
-            lambda: set()
+    def _resolve_polygons(self, viewport: Viewport) -> list[Polygon]:
+        arrangement = SegmentArrangement()
+
+        # corner points of the viewport
+        bottom_left = dtPoint(viewport.min_time, viewport.min_pos)
+        top_left = dtPoint(viewport.min_time, viewport.max_pos)
+        bottom_right = dtPoint(viewport.max_time, viewport.min_pos)
+        top_right = dtPoint(viewport.max_time, position=viewport.max_pos)
+
+        # lists of points at the edges of the viewport
+        left: list[dtPoint] = [bottom_left, top_left]
+        right: list[dtPoint] = [bottom_right, top_right]
+        top: list[dtPoint] = [top_left, top_right]
+        bottom: list[dtPoint] = [bottom_left, bottom_right]
+
+        # full polygon
+        full_polygon = Polygon(
+            [
+                (viewport.min_time, viewport.min_pos),
+                (viewport.min_time, viewport.max_pos),
+                (viewport.max_time, viewport.max_pos),
+                (viewport.max_time, viewport.min_pos),
+            ]
         )
 
-        bottom_left = dtPoint(full_viewport.min_time, full_viewport.min_pos)
-        top_left = dtPoint(full_viewport.min_time, full_viewport.max_pos)
-        bottom_right = dtPoint(full_viewport.max_time, full_viewport.min_pos)
-        top_right = dtPoint(full_viewport.max_time, position=full_viewport.max_pos)
-
-        segments: SortedList[tuple[float, dtPoint]] = SortedList(key=lambda x: x[0])
-        segments.add((full_viewport.min_pos, bottom_right))
-        segments.add((full_viewport.max_pos, top_right))
-
+        # create segments to initialize the arrangement, cutting off at the viewport edges
         for interface in self.interfaces:
             if not interface.has_valid_states():
                 continue
 
-            x, y = interface.endpoints
+            p1, p2 = interface.endpoints
 
-            if y.time == float("inf"):
-                y_pos = interface.get_pos_at_time(full_viewport.max_time)
+            if p2.time == float("inf"):
+                y_pos = interface.get_pos_at_time(viewport.max_time)
                 assert y_pos
-                y = dtPoint(full_viewport.max_time, y_pos)
+                p2 = dtPoint(viewport.max_time, y_pos)
 
-            if y != top_right and float_isclose(full_viewport.max_time, y.time):
-                segments.add((y.position, y))
+            arrangement.add_segment(p1, p2)
 
-            graph[x].add(y)
-            graph[y].add(x)
+            if p2 == bottom_left or p2 == top_left or p2 == top_right or p2 == bottom_right:
+                continue
 
-            for neighbor in graph[x]:
-                graph[neighbor].add(x)
+            if (
+                p2.time == viewport.max_time
+                and p2.position < viewport.max_pos
+                and p2.position > viewport.min_pos
+            ):
+                right.append(p2)
 
-            for neighbor in graph[y]:
-                graph[neighbor].add(y)
+            time_of_max_pos = interface.get_time_at_pos(viewport.max_pos)
+            time_of_min_pos = interface.get_time_at_pos(viewport.min_pos)
 
-        graph[bottom_left].add(top_left)
-        graph[bottom_left].add(bottom_right)
-        graph[top_left].add(top_right)
-        graph[top_left].add(bottom_left)
-        graph[bottom_right].add(bottom_left)
-        graph[top_right].add(top_left)
+            if time_of_max_pos is not None:
+                top.append(dtPoint(time_of_max_pos, viewport.max_pos))
+            if time_of_min_pos is not None:
+                bottom.append(dtPoint(time_of_min_pos, viewport.min_pos))
 
-        for i in range(len(segments) - 1):
-            _, below = segments[i]
-            _, above = segments[i + 1]
-            graph[below].add(above)
-            graph[above].add(below)
+        # create segments along the viewport edges
+        bottom.sort(key=lambda x: x.time)
+        top.sort(key=lambda x: x.time)
+        left.sort(key=lambda x: x.position)
+        right.sort(key=lambda x: x.position)
 
+        for edge_list in [bottom, top, left, right]:
+            for i in range(len(edge_list) - 1):
+                arrangement.add_segment(edge_list[i], edge_list[i + 1])
+
+        edges = arrangement.get_all_edges()
+        seen: set[ArrangementEdge] = set()
         polygons: list[shp.Polygon] = []
 
-        if set_viewport is None:
-            set_viewport = full_viewport
+        for edge in edges:
+            if edge in seen:
+                continue
 
-        full_polygon = Polygon(
-            [
-                (set_viewport.min_time, set_viewport.min_pos),
-                (set_viewport.min_time, set_viewport.max_pos),
-                (set_viewport.max_time, set_viewport.max_pos),
-                (set_viewport.max_time, set_viewport.min_pos),
-            ]
-        )
+            src, dest = edge
+            cur: list[dtPoint] = []
 
-        seen: set[tuple[dtPoint, dtPoint]] = set()
-        for _ in range(2):
-            for point in graph.keys():
-                stack: collections.deque[dtPoint] = collections.deque([point])
+            while (src, dest) not in seen:
+                seen.add((src, dest))
+                cur.append(src)
 
-                cur = None
-                for neighbor in graph[point]:
-                    if (point, neighbor) not in seen:
-                        cur = neighbor
-                        break
+                src, dest = dest, arrangement.get_next_ccw_vertex(src, dest)
 
-                if cur is None:
-                    continue
+            if len(cur) < 3:
+                continue
 
-                stop = False
-
-                iterations = 0
-                while cur:
-                    stack.append(cur)
-
-                    prev_vec = np.array(
-                        [cur.time - stack[-2].time, cur.position - stack[-2].position]
-                    )
-
-                    max_angle: float = -1
-                    next_point: dtPoint | None = None
-
-                    for neighbor in graph[cur]:
-                        vec = -1 * np.array(
-                            [neighbor.time - cur.time, neighbor.position - cur.position]
-                        )
-
-                        if float_isclose(cast(float, np.linalg.norm(prev_vec)), 0) or float_isclose(
-                            cast(float, np.linalg.norm(vec)), 0
-                        ):
-                            continue
-
-                        expr = (
-                            np.dot(prev_vec, vec) / np.linalg.norm(prev_vec) / np.linalg.norm(vec)
-                        )
-                        angle: float = np.degrees(np.arccos(np.clip(expr, -1, 1)))
-
-                        sign: float = np.sign(prev_vec[0] * vec[1] - prev_vec[1] * vec[0])
-
-                        if sign < 0:
-                            angle = 360 - angle
-
-                        if angle > max_angle:
-                            max_angle = angle
-                            next_point = neighbor
-
-                    if next_point is None or next_point == point:
-                        break
-                    cur = next_point
-
-                    iterations += 1
-
-                    if iterations == len(graph) * 2:
-                        stop = True
-                        break
-
-                if stop:
-                    continue
-
-                for i in range(len(stack) - 1):
-                    seen.add((stack[i], stack[i + 1]))
-                seen.add((stack[-1], stack[0]))
-
-                if len(stack) <= 2:
-                    continue
-                polygon = Polygon([(x.time, x.position) for x in stack])
-
-                polygons.append(polygon)
+            polygon = Polygon([(x.time, x.position) for x in cur])
+            polygons.append(polygon)
 
         out: list[Polygon] = []
         for i in range(len(polygons)):
@@ -1330,7 +1272,7 @@ class ShockwaveDrawer:
 
         if len(out) > 1:
             for i in range(len(out)):
-                if float_isclose(out[i].area, full_polygon.area):
+                if float_isclose(out[i].area, full_polygon.area) or out[i].area > full_polygon.area:
                     out.pop(i)
                     break
 

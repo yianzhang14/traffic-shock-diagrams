@@ -8,11 +8,12 @@ from shapely.geometry import Polygon  # type: ignore
 
 from src.drawer_utils import State, dtPoint
 
-Axes = matplotlib.axes.Axes
-Figure = matplotlib.figure.Figure
+type Axes = matplotlib.axes.Axes
+type Figure = matplotlib.figure.Figure
 
-Value = Union[float, Decimal]
-Color = tuple[float, float, float]
+type Value = Union[float, Decimal]
+type Color = tuple[float, float, float]
+type ArrangementEdge = tuple[dtPoint, dtPoint]
 
 
 @dataclass
