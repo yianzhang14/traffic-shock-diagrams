@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import dataclasses
 import math
+from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 import matplotlib.cm as cm
@@ -894,6 +895,8 @@ class ShockwaveDrawer:
             min_pos - PLOT_THRESHOLD_OFFSET,
         )
 
+        polygons, segment_mappings = self._resolve_polygons(viewport)
+
         # process trajectories
         if with_trajectories:
             slope = self.default_state.get_slope()
@@ -909,61 +912,69 @@ class ShockwaveDrawer:
             lower = math.floor(-1 * slope * viewport.max_time)
             upper = viewport.max_pos
 
+            base_polygon = -1
+            for i, polygon in enumerate(polygons):
+                if polygon.contains(shp.Point(viewport.min_time + EPS, 0)):
+                    base_polygon = i
+                    break
+
             for start in np.arange(lower, upper, step):
                 cur_trajectories: list[GraphLine] = []
 
-                try:
-                    assert isinstance(start, float)
-                    cur = Trajectory(dtPoint(0, start + 0.1), slope)
+                assert isinstance(start, float)
+                cur = Trajectory(dtPoint(0, start + 0.1), slope)
+                cur_poly = base_polygon
 
-                    while True:
-                        x = self._find_closest_intersection_traj(cur)
-                        next_trajectory: Trajectory | None = None
+                while True:
+                    # x = self._find_closest_intersection_traj(cur)
+                    next_trajectory: Trajectory | None = None
 
-                        if x is not None:
-                            intersection, interface = x
-                            assert interface.above
+                    coords = polygons[cur_poly].exterior.coords
+                    for i in range(len(coords) - 1):
+                        time1, pos1 = coords[i]
+                        time2, pos2 = coords[i + 1]
+                        slope = (pos2 - pos1) / (time2 - time1)
 
-                            next_trajectory = Trajectory(
-                                intersection, interface.above.get_slope(), lower_bound=intersection
-                            )
+                    # if x is not None:
+                    #     intersection, interface = x
+                    #     assert interface.above
 
-                            # if we have a slope of inf (iff density of state is 0), just
-                            # kill the trajectory -- this occurs if we have an trajectory intersect
-                            # exactly at the point of an interface
-                            if next_trajectory.slope == float("inf"):
-                                break
+                    #     next_trajectory = Trajectory(
+                    #         intersection, interface.above.get_slope(), lower_bound=intersection
+                    #     )
 
-                            cur.add_cutoff(upper=intersection)
+                    #     # if we have a slope of inf (iff density of state is 0), just
+                    #     # kill the trajectory -- this occurs if we have an trajectory intersect
+                    #     # exactly at the point of an interface
+                    #     if next_trajectory.slope == float("inf"):
+                    #         break
 
-                        p1 = cur.endpoints[0]
-                        p2 = cur.endpoints[1]
+                    #     cur.add_cutoff(upper=intersection)
 
-                        if p2.time == float("inf"):
-                            p2_pos = cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET)
-                            if p2_pos is None:
-                                break
-                            p2 = dtPoint(
-                                max_time + PLOT_THRESHOLD_OFFSET,
-                                p2_pos,
-                            )
+                    p1 = cur.endpoints[0]
+                    p2 = cur.endpoints[1]
 
-                        cur_trajectories.append(GraphLine(p1, p2, GREY))
-
-                        if next_trajectory is not None:
-                            cur = next_trajectory
-                        else:
+                    if p2.time == float("inf"):
+                        p2_pos = cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET)
+                        if p2_pos is None:
                             break
-                except Exception as e:
-                    print(e)
+                        p2 = dtPoint(
+                            max_time + PLOT_THRESHOLD_OFFSET,
+                            p2_pos,
+                        )
+
+                    cur_trajectories.append(GraphLine(p1, p2, GREY))
+
+                    if next_trajectory is not None:
+                        cur = next_trajectory
+                    else:
+                        break
 
                 trajectories_out.append(cur_trajectories)
 
         min_pos = min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
 
         if with_polygons:
-            polygons = self._resolve_polygons(viewport)
-
             for polygon in polygons:
                 midpoint: shp.Point = polygon.representative_point()
 
@@ -1150,7 +1161,9 @@ class ShockwaveDrawer:
 
         return fig
 
-    def _resolve_polygons(self, viewport: Viewport) -> list[Polygon]:
+    def _resolve_polygons(
+        self, viewport: Viewport
+    ) -> tuple[list[Polygon], dict[ArrangementEdge, list[int]]]:
         arrangement = SegmentArrangement()
 
         # corner points of the viewport
@@ -1217,9 +1230,10 @@ class ShockwaveDrawer:
             for i in range(len(edge_list) - 1):
                 arrangement.add_segment(edge_list[i], edge_list[i + 1])
 
-        edges = arrangement.get_all_edges()
+        edges = arrangement.get_all_directed_edges()
         seen: set[ArrangementEdge] = set()
         polygons: list[shp.Polygon] = []
+        segment_mappings: dict[ArrangementEdge, list[int]] = defaultdict(list)
 
         for edge in edges:
             if edge in seen:
@@ -1235,9 +1249,22 @@ class ShockwaveDrawer:
                 src, dest = dest, arrangement.get_next_ccw_vertex(src, dest)
 
             if len(cur) < 3:
+                print("degenerate polygon:", cur)
                 continue
 
             polygon = Polygon([(x.time, x.position) for x in cur])
+
+            if float_isclose(
+                polygon.area,
+                (viewport.max_time - viewport.min_time) * (viewport.max_pos - viewport.min_pos),
+            ):
+                continue
+
+            for i in range(len(cur) - 1):
+                points = [cur[i], cur[i + 1]]
+                _, lp = min(enumerate(points), key=lambda x: x[1].time)
+                _, rp = max(enumerate(points), key=lambda x: x[1].time)
+                segment_mappings[(lp, rp)].append(len(polygons))
             polygons.append(polygon)
 
         out: list[Polygon] = []
@@ -1270,10 +1297,11 @@ class ShockwaveDrawer:
                 print(e)
                 continue
 
-        if len(out) > 1:
+        if len(out) == 0:
+            out = [full_polygon]
             for i in range(len(out)):
                 if float_isclose(out[i].area, full_polygon.area) or out[i].area > full_polygon.area:
                     out.pop(i)
                     break
 
-        return out
+        return out, segment_mappings
