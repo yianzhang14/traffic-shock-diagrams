@@ -105,16 +105,22 @@ class SegmentTree:
 
         return node
 
-    def _insert_segment(self, segment: ArrangementEdge, node: SegmentTreeNode) -> None:
-        if segment[1].time < node.left_cutoff or segment[0].time > node.right_cutoff:
+    def _insert_segment(
+        self, index: int, left: float, right: float, node: Optional[SegmentTreeNode]
+    ) -> None:
+        if node is None:
+            return
+        if right < node.left_cutoff or left > node.right_cutoff:
             return
 
-        if (
-            segment[0].time < node.left_cutoff or float_isclose(segment[0].time, node.left_cutoff)
-        ) and (
-            segment[1].time > node.right_cutoff or float_isclose(segment[1].time, node.right_cutoff)
+        if (left < node.left_cutoff or float_isclose(left, node.left_cutoff)) and (
+            right > node.right_cutoff or float_isclose(right, node.right_cutoff)
         ):
-            pass
+            node.segments.append(index)
+            return
+
+        self._insert_segment(index, left, node.divider, node.left)
+        self._insert_segment(index, node.divider, right, node.right)
 
     def find_segment(self, x, y, node=1, start=0, end=None):
         if end is None:

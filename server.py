@@ -7,7 +7,7 @@ from flask_pydantic import validate  # type: ignore
 from pydantic import BaseModel
 
 from src.fundamental_diagram import DiagramSettings, FundamentalDiagram
-from src.parser import parse
+from src.parse import parse
 from src.shockwave_drawer import ShockwaveDrawer
 
 app = Flask(__name__)
