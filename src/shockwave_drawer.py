@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import dataclasses
 import math
-from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 import matplotlib.cm as cm
@@ -14,19 +13,15 @@ import numpy as np
 import plotly.graph_objects as go  # type: ignore
 import seaborn as sns  # type: ignore
 import shapely as shp  # type: ignore
-from matplotlib.collections import PatchCollection
-from matplotlib.patches import PathPatch
-from matplotlib.path import Path
-from shapely.geometry import MultiPolygon, Polygon  # type: ignore
 from sortedcontainers import SortedList  # type: ignore
 
-from src.custom_types import ArrangementEdge
-from src.geometry import SegmentArrangement
+from src.geometry import SegmentArrangement, calc_segment_intersection  # type: ignore
 
 if TYPE_CHECKING:
     from src.augmenters.base_augmenter import CapacityBottleneck
 
 from src.custom_types import (
+    ArrangementEdge,
     Axes,
     Color,
     Figure,
@@ -57,21 +52,6 @@ BLACK: Color = (0.0, 0.0, 0.0)
 GREY: Color = (0.5, 0.5, 0.5)
 
 EPS = 1e-2
-
-
-# Plots a Polygon to pyplot `ax`
-def plot_polygon(ax, poly, **kwargs):
-    path = Path.make_compound_path(
-        Path(np.asarray(poly.exterior.coords)[:, :2]),
-        *[Path(np.asarray(ring.coords)[:, :2]) for ring in poly.interiors],
-    )
-
-    patch = PathPatch(path, **kwargs)
-    collection = PatchCollection([patch], **kwargs)
-
-    ax.add_collection(collection, autolim=True)
-    ax.autoscale_view()
-    return collection
 
 
 class ShockwaveDrawer:
@@ -895,10 +875,14 @@ class ShockwaveDrawer:
             min_pos - PLOT_THRESHOLD_OFFSET,
         )
 
-        polygons, segment_mappings = self._resolve_polygons(viewport)
+        arrangement = SegmentArrangement(viewport)
 
         # process trajectories
         if with_trajectories:
+            arrangement.build(self.interfaces)
+
+            base_poly = arrangement.get_base_polygon()
+
             slope = self.default_state.get_slope()
 
             # step is affected by desired number of trajectories, scaled by initial density
@@ -912,50 +896,72 @@ class ShockwaveDrawer:
             lower = math.floor(-1 * slope * viewport.max_time)
             upper = viewport.max_pos
 
-            base_polygon = -1
-            for i, polygon in enumerate(polygons):
-                if polygon.contains(shp.Point(viewport.min_time + EPS, 0)):
-                    base_polygon = i
-                    break
-
             for start in np.arange(lower, upper, step):
-                cur_trajectories: list[GraphLine] = []
+                trajectory: list[GraphLine] = []
 
                 assert isinstance(start, float)
-                cur = Trajectory(dtPoint(0, start + 0.1), slope)
-                cur_poly = base_polygon
+                cur_traj = Trajectory(dtPoint(0, float(start) + 0.1), slope)
+
+                cur_poly_id = base_poly
 
                 while True:
                     # x = self._find_closest_intersection_traj(cur)
                     next_trajectory: Trajectory | None = None
+                    next_poly_id = -1
 
-                    coords = polygons[cur_poly].exterior.coords
-                    for i in range(len(coords) - 1):
-                        time1, pos1 = coords[i]
-                        time2, pos2 = coords[i + 1]
-                        slope = (pos2 - pos1) / (time2 - time1)
+                    poly = arrangement.get_polygon(cur_poly_id)
+                    assert poly
 
-                    # if x is not None:
-                    #     intersection, interface = x
-                    #     assert interface.above
+                    print(poly)
+                    print(cur_traj)
 
-                    #     next_trajectory = Trajectory(
-                    #         intersection, interface.above.get_slope(), lower_bound=intersection
-                    #     )
+                    closest_intersect = float("inf")
+                    next_pt: Optional[dtPoint] = None
+                    intersected_seg: Optional[ArrangementEdge] = None
 
-                    #     # if we have a slope of inf (iff density of state is 0), just
-                    #     # kill the trajectory -- this occurs if we have an trajectory intersect
-                    #     # exactly at the point of an interface
-                    #     if next_trajectory.slope == float("inf"):
-                    #         break
+                    for i in range(len(poly)):
+                        if float_isclose(poly[i].time, viewport.min_time) or float_isclose(
+                            poly[(i + 1) % len(poly)].time, viewport.min_time
+                        ):
+                            continue
+                        intersect = calc_segment_intersection(
+                            cur_traj.point, cur_traj.slope, (poly[i], poly[(i + 1) % len(poly)])
+                        )
+                        if intersect is not None:
+                            if intersect.time < closest_intersect:
+                                closest_intersect = intersect.time
+                                next_pt = intersect
+                                intersected_seg = (poly[i], poly[(i + 1) % len(poly)])
 
-                    #     cur.add_cutoff(upper=intersection)
+                    print(closest_intersect)
+                    print(next_pt)
+                    print(intersected_seg)
 
-                    p1 = cur.endpoints[0]
-                    p2 = cur.endpoints[1]
+                    if next_pt is not None and intersected_seg is not None:
+                        interface = arrangement.get_segment_interface(intersected_seg)
+
+                        if interface is not None:
+                            assert interface.above
+                            next_trajectory = Trajectory(
+                                next_pt, interface.above.get_slope(), lower_bound=next_pt
+                            )
+
+                            if next_trajectory.slope == float("inf"):
+                                break
+
+                            cur_traj.add_cutoff(upper=next_pt)
+
+                        next_polys = arrangement.get_segment_geos(intersected_seg)
+
+                        for possibility in next_polys:
+                            if possibility != cur_poly_id:
+                                next_poly_id = possibility
+                                break
+
+                    p1, p2 = cur_traj.endpoints
 
                     if p2.time == float("inf"):
-                        p2_pos = cur.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET)
+                        p2_pos = cur_traj.get_pos_at_time(max_time + PLOT_THRESHOLD_OFFSET)
                         if p2_pos is None:
                             break
                         p2 = dtPoint(
@@ -963,18 +969,23 @@ class ShockwaveDrawer:
                             p2_pos,
                         )
 
-                    cur_trajectories.append(GraphLine(p1, p2, GREY))
+                    trajectory.append(GraphLine(p1, p2, GREY))
 
-                    if next_trajectory is not None:
-                        cur = next_trajectory
+                    if next_trajectory is not None and next_poly_id is not None:
+                        cur_traj = next_trajectory
+                        cur_poly_id = next_poly_id
                     else:
                         break
+                print()
 
-                trajectories_out.append(cur_trajectories)
+                trajectories_out.append(trajectory)
 
         min_pos = min(min_pos, 0) - PLOT_THRESHOLD_OFFSET
 
         if with_polygons:
+            arrangement.build(self.interfaces)
+            polygons = arrangement.get_cleaned_geometries()
+
             for polygon in polygons:
                 midpoint: shp.Point = polygon.representative_point()
 
@@ -1160,148 +1171,3 @@ class ShockwaveDrawer:
         )
 
         return fig
-
-    def _resolve_polygons(
-        self, viewport: Viewport
-    ) -> tuple[list[Polygon], dict[ArrangementEdge, list[int]]]:
-        arrangement = SegmentArrangement()
-
-        # corner points of the viewport
-        bottom_left = dtPoint(viewport.min_time, viewport.min_pos)
-        top_left = dtPoint(viewport.min_time, viewport.max_pos)
-        bottom_right = dtPoint(viewport.max_time, viewport.min_pos)
-        top_right = dtPoint(viewport.max_time, position=viewport.max_pos)
-
-        # lists of points at the edges of the viewport
-        left: list[dtPoint] = [bottom_left, top_left]
-        right: list[dtPoint] = [bottom_right, top_right]
-        top: list[dtPoint] = [top_left, top_right]
-        bottom: list[dtPoint] = [bottom_left, bottom_right]
-
-        # full polygon
-        full_polygon = Polygon(
-            [
-                (viewport.min_time, viewport.min_pos),
-                (viewport.min_time, viewport.max_pos),
-                (viewport.max_time, viewport.max_pos),
-                (viewport.max_time, viewport.min_pos),
-            ]
-        )
-
-        # create segments to initialize the arrangement, cutting off at the viewport edges
-        for interface in self.interfaces:
-            if not interface.has_valid_states():
-                continue
-
-            p1, p2 = interface.endpoints
-
-            if p2.time == float("inf"):
-                y_pos = interface.get_pos_at_time(viewport.max_time)
-                assert y_pos
-                p2 = dtPoint(viewport.max_time, y_pos)
-
-            arrangement.add_segment(p1, p2)
-
-            if p2 == bottom_left or p2 == top_left or p2 == top_right or p2 == bottom_right:
-                continue
-
-            if (
-                p2.time == viewport.max_time
-                and p2.position < viewport.max_pos
-                and p2.position > viewport.min_pos
-            ):
-                right.append(p2)
-
-            time_of_max_pos = interface.get_time_at_pos(viewport.max_pos)
-            time_of_min_pos = interface.get_time_at_pos(viewport.min_pos)
-
-            if time_of_max_pos is not None:
-                top.append(dtPoint(time_of_max_pos, viewport.max_pos))
-            if time_of_min_pos is not None:
-                bottom.append(dtPoint(time_of_min_pos, viewport.min_pos))
-
-        # create segments along the viewport edges
-        bottom.sort(key=lambda x: x.time)
-        top.sort(key=lambda x: x.time)
-        left.sort(key=lambda x: x.position)
-        right.sort(key=lambda x: x.position)
-
-        for edge_list in [bottom, top, left, right]:
-            for i in range(len(edge_list) - 1):
-                arrangement.add_segment(edge_list[i], edge_list[i + 1])
-
-        edges = arrangement.get_all_directed_edges()
-        seen: set[ArrangementEdge] = set()
-        polygons: list[shp.Polygon] = []
-        segment_mappings: dict[ArrangementEdge, list[int]] = defaultdict(list)
-
-        for edge in edges:
-            if edge in seen:
-                continue
-
-            src, dest = edge
-            cur: list[dtPoint] = []
-
-            while (src, dest) not in seen:
-                seen.add((src, dest))
-                cur.append(src)
-
-                src, dest = dest, arrangement.get_next_ccw_vertex(src, dest)
-
-            if len(cur) < 3:
-                print("degenerate polygon:", cur)
-                continue
-
-            polygon = Polygon([(x.time, x.position) for x in cur])
-
-            if float_isclose(
-                polygon.area,
-                (viewport.max_time - viewport.min_time) * (viewport.max_pos - viewport.min_pos),
-            ):
-                continue
-
-            for i in range(len(cur) - 1):
-                points = [cur[i], cur[i + 1]]
-                _, lp = min(enumerate(points), key=lambda x: x[1].time)
-                _, rp = max(enumerate(points), key=lambda x: x[1].time)
-                segment_mappings[(lp, rp)].append(len(polygons))
-            polygons.append(polygon)
-
-        out: list[Polygon] = []
-        for i in range(len(polygons)):
-            try:
-                # fig, ax = plt.subplots()
-                # plot_polygon(ax, polygons[i], facecolor="red", alpha=0.5)
-                # plot_polygon(ax, full_polygon, facecolor="lightblue", alpha=0.5)
-
-                intersection = full_polygon.intersection(shp.make_valid(polygons[i]))
-
-                if intersection.is_empty:
-                    continue
-
-                if isinstance(intersection, Polygon):
-                    # plot_polygon(ax, intersection, facecolor="green", alpha=0.5)
-                    out.append(intersection)
-                    # temp = intersection.representative_point()
-
-                    # ax.plot(temp.x, temp.y, "ro")
-                elif isinstance(intersection, MultiPolygon):
-                    for component in intersection.geoms:
-                        # plot_polygon(ax, component, facecolor="green", alpha=0.5)
-                        out.append(component)
-                        # temp = component.representative_point()
-                        # ax.plot(temp.x, temp.y, "ro")
-
-                # fig.show()
-            except Exception as e:
-                print(e)
-                continue
-
-        if len(out) == 0:
-            out = [full_polygon]
-            for i in range(len(out)):
-                if float_isclose(out[i].area, full_polygon.area) or out[i].area > full_polygon.area:
-                    out.pop(i)
-                    break
-
-        return out, segment_mappings
