@@ -5,6 +5,7 @@ data/*
 
 dist/
 node_modules/
+.mypy_cache
 
 # pixi environments
 .pixi
