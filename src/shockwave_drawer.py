@@ -875,6 +875,9 @@ class ShockwaveDrawer:
             min_pos - PLOT_THRESHOLD_OFFSET,
         )
 
+        if set_viewport is None:
+            set_viewport = viewport
+
         arrangement = SegmentArrangement(viewport)
 
         # process trajectories
@@ -887,14 +890,14 @@ class ShockwaveDrawer:
 
             # step is affected by desired number of trajectories, scaled by initial density
             step = (
-                (viewport.max_pos + slope * viewport.max_time)
+                (set_viewport.max_pos + slope * set_viewport.max_time)
                 / self.diagram.init_density
                 / num_trajectories
             )
 
             # positions to start drawing lines at to cover the whole viewport
-            lower = math.floor(-1 * slope * viewport.max_time)
-            upper = viewport.max_pos
+            lower = math.floor(-1 * slope * set_viewport.max_time)
+            upper = set_viewport.max_pos
 
             for start in np.arange(lower, upper, step):
                 trajectory: list[GraphLine] = []
@@ -911,9 +914,6 @@ class ShockwaveDrawer:
 
                     poly = arrangement.get_polygon(cur_poly_id)
                     assert poly
-
-                    print(poly)
-                    print(cur_traj)
 
                     closest_intersect = float("inf")
                     next_pt: Optional[dtPoint] = None
@@ -932,10 +932,6 @@ class ShockwaveDrawer:
                                 closest_intersect = intersect.time
                                 next_pt = intersect
                                 intersected_seg = (poly[i], poly[(i + 1) % len(poly)])
-
-                    print(closest_intersect)
-                    print(next_pt)
-                    print(intersected_seg)
 
                     if next_pt is not None and intersected_seg is not None:
                         interface = arrangement.get_segment_interface(intersected_seg)
@@ -976,7 +972,6 @@ class ShockwaveDrawer:
                         cur_poly_id = next_poly_id
                     else:
                         break
-                print()
 
                 trajectories_out.append(trajectory)
 
