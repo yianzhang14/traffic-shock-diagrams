@@ -1,7 +1,7 @@
 import { CapacityBottleneck } from "./augmenters/base_augmenter";
 import { FundamentalDiagram } from "./fundamental_diagram";
 import { ShockwaveDrawer } from "./shockwave_drawer";
-import { DEFAULT_FIGURERESULT, Viewport } from "./types";
+import { DEFAULT_FIGURERESULT, FigureResult, Viewport } from "./types";
 
 export * from "./types";
 export * from "./shockwave_drawer";
@@ -38,7 +38,10 @@ export function createFundamentalDiagram({
 
 export function createFigureFactory({
   fund_dia, simulation_time, num_trajectories, with_trajectories, with_polygons, viewport
-}: FigureParams) {
+}: FigureParams): [
+  (_augments: CapacityBottleneck[]) => FigureResult,
+  (_params: FundamentalDiagramParams) => void
+] {
   let prev = DEFAULT_FIGURERESULT;
 
   let sd = new ShockwaveDrawer(
@@ -46,7 +49,7 @@ export function createFigureFactory({
   );
 
   return [
-    function(augments: CapacityBottleneck[]) {
+    (augments: CapacityBottleneck[]): FigureResult => {
       try {
         sd.run(simulation_time, augments);
         const fig = sd.generateFigure(num_trajectories, with_trajectories, with_polygons, viewport);
@@ -57,7 +60,7 @@ export function createFigureFactory({
 
       return prev;
     },
-    function(params: FundamentalDiagramParams) {
+    (params: FundamentalDiagramParams) => {
       sd = new ShockwaveDrawer(createFundamentalDiagram(params));
     }
   ];
