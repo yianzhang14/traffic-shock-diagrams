@@ -30,9 +30,10 @@ export class FundamentalDiagram {
       throw new RangeError("Freeflow speed must be greater than traffic wave speed");
     }
 
-    if (!(initDensity >= 0 && initDensity <= jamDensity)) {
+    if (!this.densityIsValid(initDensity)) {
       throw new RangeError("The provided initial density is not valid for the described fundamnetal diagram--does not fall within the range of possible densities");
     }
+
 
     this.freeflowSpeed = freeflowSpeed;
     this.jamDensity = jamDensity;
@@ -52,6 +53,14 @@ export class FundamentalDiagram {
     this.capacity = this.capacityDensity * freeflowSpeed;
   }
 
+  public densityIsValid(density: number): boolean {
+    return (
+      !(density > 0 && density < this.jamDensity)
+      && !floatIsClose(density, this.jamDensity)
+      && !floatIsClose(density, 0)
+    );
+  }
+
   /**
      * Helper function for interpolating the fundamental diagram equation for flow given a density. Essentially utilizes the piecewise definition of the fundamental diagram.
      *
@@ -61,11 +70,7 @@ export class FundamentalDiagram {
      * @memberof FundamentalDiagram
      */
   private interpolateFlow(density: number): number {
-    if (
-      !(density > 0 && density < this.jamDensity)
-      && !floatIsClose(density, this.jamDensity)
-      && !floatIsClose(density, 0)
-    ) {
+    if (!this.densityIsValid(density)) {
       throw new RangeError("Density invalid -- not possible in the fundamental diagram");
     }
 
@@ -188,7 +193,7 @@ export class FundamentalDiagram {
      * @memberof FundamentalDiagram
      */
   public stateIsQueued(state: State): boolean {
-    if (!(state.density >= 0 && state.density <= this.jamDensity)) {
+    if (!this.densityIsValid(state.density)) {
       throw new RangeError("density of the provided state is invalid");
     }
 
