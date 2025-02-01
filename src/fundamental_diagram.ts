@@ -30,7 +30,7 @@ export class FundamentalDiagram {
       throw new RangeError("Freeflow speed must be greater than traffic wave speed");
     }
 
-    if (!this.densityIsValid(initDensity)) {
+    if (this.densityIsInvalid(initDensity)) {
       throw new RangeError("The provided initial density is not valid for the described fundamnetal diagram--does not fall within the range of possible densities");
     }
 
@@ -53,7 +53,7 @@ export class FundamentalDiagram {
     this.capacity = this.capacityDensity * freeflowSpeed;
   }
 
-  public densityIsValid(density: number): boolean {
+  public densityIsInvalid(density: number): boolean {
     return (
       !(density > 0 && density < this.jamDensity)
       && !floatIsClose(density, this.jamDensity)
@@ -70,7 +70,7 @@ export class FundamentalDiagram {
      * @memberof FundamentalDiagram
      */
   private interpolateFlow(density: number): number {
-    if (!this.densityIsValid(density)) {
+    if (this.densityIsInvalid(density)) {
       throw new RangeError("Density invalid -- not possible in the fundamental diagram");
     }
 
@@ -193,7 +193,7 @@ export class FundamentalDiagram {
      * @memberof FundamentalDiagram
      */
   public stateIsQueued(state: State): boolean {
-    if (!this.densityIsValid(state.density)) {
+    if (this.densityIsInvalid(state.density)) {
       throw new RangeError("density of the provided state is invalid");
     }
 
