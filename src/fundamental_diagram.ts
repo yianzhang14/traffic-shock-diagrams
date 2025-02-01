@@ -61,17 +61,24 @@ export class FundamentalDiagram {
      * @memberof FundamentalDiagram
      */
   private interpolateFlow(density: number): number {
-    if (!(density >= 0 && density <= this.jamDensity)) {
+    if (
+      !(density > 0 && density < this.jamDensity)
+      && !floatIsClose(density, this.jamDensity)
+      && !floatIsClose(density, 0)
+    ) {
       throw new RangeError("Density invalid -- not possible in the fundamental diagram");
     }
 
     if (floatIsClose(density, this.capacityDensity)) {
       return this.capacity;
+    } else if (floatIsClose(density, 0)) {
+      return 0;
     } else if (density < this.capacityDensity) {
       return this.freeflowSpeed * density;
     } else {
       return this.capacity - this.trafficWaveSpeed * (density - this.capacityDensity);
     }
+
   }
 
   /**
