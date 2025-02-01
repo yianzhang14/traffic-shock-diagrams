@@ -30,14 +30,14 @@ export class FundamentalDiagram {
       throw new RangeError("Freeflow speed must be greater than traffic wave speed");
     }
 
+    this.freeflowSpeed = freeflowSpeed;
+    this.jamDensity = jamDensity;
+    this.trafficWaveSpeed = trafficWaveSpeed;
+
     if (this.densityIsInvalid(initDensity)) {
       throw new RangeError("The provided initial density is not valid for the described fundamnetal diagram--does not fall within the range of possible densities");
     }
 
-
-    this.freeflowSpeed = freeflowSpeed;
-    this.jamDensity = jamDensity;
-    this.trafficWaveSpeed = trafficWaveSpeed;
     this.initDensity = initDensity;
 
     // solve a system of linear equations to get the peak/intersection
