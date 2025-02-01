@@ -22,7 +22,7 @@ module.exports = tseslint.config(
         ...globals.node
       }
     },
-    
+
   },
 
   {
@@ -45,7 +45,7 @@ module.exports = tseslint.config(
         "error",
         "always"
       ],
-      "no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": [
         "error", { argsIgnorePattern: "^_" }
       ],
@@ -56,6 +56,7 @@ module.exports = tseslint.config(
           checksVoidReturn: false
         }
       ],
+      "indent": ["error", 2, { SwitchCase: 1 }],
       "import/order": [
         "error",
         {
@@ -81,12 +82,12 @@ module.exports = tseslint.config(
         },
       ],
       "stylistic/max-len": [
-        "error", 
-        { 
-          ignoreTemplateLiterals: true, 
-          code: 100, 
-          ignoreComments: true, 
-          ignoreStrings: true 
+        "error",
+        {
+          ignoreTemplateLiterals: true,
+          code: 100,
+          ignoreComments: true,
+          ignoreStrings: true
         }
       ],
       "stylistic/object-curly-spacing": [

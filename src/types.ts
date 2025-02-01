@@ -44,24 +44,24 @@ export interface GraphPolygon {
 };
 
 export interface Viewport {
-  max_pos: number,
-  min_pos: number,
-  max_time: number,
-  min_time: number
+  maxPos: number,
+  minPos: number,
+  maxTime: number,
+  minTime: number
 }
 
 export interface FigureResult {
   viewport: Viewport,
-  user_interfaces: GraphLine[],
+  userInterfaces: GraphLine[],
   interfaces: GraphInterface[],
   polygons: GraphPolygon[],
   trajectories: GraphTrajectory[],
   states: State[]
 };
 
-export const DEFAULT_FIGURERESULT: FigureResult = {
-  viewport: { max_pos: 0, min_pos: 0, max_time: 0, min_time: 0 },
-  user_interfaces: [],
+export const DefaultFigureResult: FigureResult = {
+  viewport: { maxPos: 0, minPos: 0, maxTime: 0, minTime: 0 },
+  userInterfaces: [],
   interfaces: [],
   polygons: [],
   trajectories: [],

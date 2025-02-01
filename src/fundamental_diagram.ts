@@ -1,55 +1,55 @@
-import { State, float_isclose } from "./drawer_utils";
+import { State, floatIsClose } from "./drawer_utils";
 
 
 export class FundamentalDiagram {
-  public freeflow_speed: number;
-  public jam_density: number;
-  public traffic_wave_speed: number;
-  public init_density: number;
+  public freeflowSpeed: number;
+  public jamDensity: number;
+  public trafficWaveSpeed: number;
+  public initDensity: number;
 
-  public capacity_density: number;
+  public capacityDensity: number;
   public capacity: number;
 
   /**
      * Creates an instance of FundamentalDiagram. Fully determined by the parameters listed here.
      * 
-     * @param {number} freeflow_speed absval of slope of LHS of fundamental diagram
-     * @param {number} jam_density at what point the RHS of the fundamental diagram has 0 flow
-     * @param {number} traffic_wave_speed absval of the slope of the RHS of the fundamental diagram (translated into a negative slope)
-     * @param {number} init_density initial density of the situation
+     * @param {number} freeflowSpeed absval of slope of LHS of fundamental diagram
+     * @param {number} jamDensity at what point the RHS of the fundamental diagram has 0 flow
+     * @param {number} trafficWaveSpeed absval of the slope of the RHS of the fundamental diagram (translated into a negative slope)
+     * @param {number} initDensity initial density of the situation
      * @memberof FundamentalDiagram
      */
   constructor(
-    freeflow_speed: number, jam_density: number, traffic_wave_speed: number, init_density: number
+    freeflowSpeed: number, jamDensity: number, trafficWaveSpeed: number, initDensity: number
   ) {
-    if (!(freeflow_speed > 0 && jam_density > 0 && traffic_wave_speed > 0)) {
+    if (!(freeflowSpeed > 0 && jamDensity > 0 && trafficWaveSpeed > 0)) {
       throw new RangeError("All inputs/speeds must be positive");
     }
 
-    if (freeflow_speed <= traffic_wave_speed) {
+    if (freeflowSpeed <= trafficWaveSpeed) {
       throw new RangeError("Freeflow speed must be greater than traffic wave speed");
     }
 
-    if (!(init_density >= 0 && init_density <= jam_density)) {
+    if (!(initDensity >= 0 && initDensity <= jamDensity)) {
       throw new RangeError("The provided initial density is not valid for the described fundamnetal diagram--does not fall within the range of possible densities");
     }
-        
-    this.freeflow_speed = freeflow_speed;
-    this.jam_density = jam_density;
-    this.traffic_wave_speed = traffic_wave_speed;
-    this.init_density = init_density;
+
+    this.freeflowSpeed = freeflowSpeed;
+    this.jamDensity = jamDensity;
+    this.trafficWaveSpeed = trafficWaveSpeed;
+    this.initDensity = initDensity;
 
     // solve a system of linear equations to get the peak/intersection
     // between the freeflow and traffic wave portions of the fundmental diagram
-    this.capacity_density = (
-      traffic_wave_speed * jam_density
-    ) / (traffic_wave_speed + freeflow_speed);
+    this.capacityDensity = (
+      trafficWaveSpeed * jamDensity
+    ) / (trafficWaveSpeed + freeflowSpeed);
 
-    // if (init_density > this.capacity_density) {
+    // if (initDensity > this.capacityDensity) {
     //   throw new RangeError("The initial density should be non-queued for now");
     // }
-    
-    this.capacity = this.capacity_density * freeflow_speed;
+
+    this.capacity = this.capacityDensity * freeflowSpeed;
   }
 
   /**
@@ -61,16 +61,16 @@ export class FundamentalDiagram {
      * @memberof FundamentalDiagram
      */
   private interpolateFlow(density: number): number {
-    if (!(density >= 0 && density <= this.jam_density)) {
+    if (!(density >= 0 && density <= this.jamDensity)) {
       throw new RangeError("Density invalid -- not possible in the fundamental diagram");
     }
 
-    if (float_isclose(density, this.capacity_density)) {
+    if (floatIsClose(density, this.capacityDensity)) {
       return this.capacity;
-    } else if (density < this.capacity_density) {
-      return this.freeflow_speed * density;
+    } else if (density < this.capacityDensity) {
+      return this.freeflowSpeed * density;
     } else {
-      return this.capacity - this.traffic_wave_speed * (density - this.capacity_density);
+      return this.capacity - this.trafficWaveSpeed * (density - this.capacityDensity);
     }
   }
 
@@ -88,13 +88,13 @@ export class FundamentalDiagram {
   }
 
   /**
-     * Gets the state associated with this.init_density.
+     * Gets the state associated with this.initDensity.
      *
      * @return {State} the resultant state
      * @memberof FundamentalDiagram
      */
   public getInitialState(): State {
-    return this.getState(this.init_density);
+    return this.getState(this.initDensity);
   }
 
   /**
@@ -106,7 +106,7 @@ export class FundamentalDiagram {
      * @memberof FundamentalDiagram
      */
   public getInterfaceSlope(x: number, y: number): number {
-    if (float_isclose(x, y)) {
+    if (floatIsClose(x, y)) {
       throw new RangeError("The densities are equal -- slope not well-defined.");
     }
 
@@ -123,7 +123,7 @@ export class FundamentalDiagram {
      * @memberof FundamentalDiagram
      */
   public getJamState(): State {
-    return new State(this.jam_density, 0);
+    return new State(this.jamDensity, 0);
   }
 
   /**
@@ -133,7 +133,7 @@ export class FundamentalDiagram {
      * @memberof FundamentalDiagram
      */
   public getMaxState(): State {
-    return new State(this.capacity_density, this.capacity);
+    return new State(this.capacityDensity, this.capacity);
   }
 
   /**
@@ -154,22 +154,22 @@ export class FundamentalDiagram {
      * @return {State} the desired state 
      * @memberof FundamentalDiagram
      */
-  public getStateByFlow(flow: number, left=false): State {
+  public getStateByFlow(flow: number, left = false): State {
     // if we want the max flow, return the max state -- there is only one option here
-    if (float_isclose(flow, this.capacity)) {
+    if (floatIsClose(flow, this.capacity)) {
       return this.getMaxState();
     }
 
     // solving a linear equation
-    const left_density: number = flow / this.freeflow_speed;
-    const right_density = (
-      flow - this.capacity - this.traffic_wave_speed * this.capacity_density
-    ) / (-1 * this.traffic_wave_speed);
+    const leftDensity: number = flow / this.freeflowSpeed;
+    const rightDensity = (
+      flow - this.capacity - this.trafficWaveSpeed * this.capacityDensity
+    ) / (-1 * this.trafficWaveSpeed);
 
     if (left) {
-      return new State(left_density, flow);
+      return new State(leftDensity, flow);
     } else {
-      return new State(right_density, flow);
+      return new State(rightDensity, flow);
     }
   }
 
@@ -181,12 +181,12 @@ export class FundamentalDiagram {
      * @memberof FundamentalDiagram
      */
   public stateIsQueued(state: State): boolean {
-    if (!(state.density >= 0 && state.density <= this.jam_density)) {
+    if (!(state.density >= 0 && state.density <= this.jamDensity)) {
       throw new RangeError("density of the provided state is invalid");
     }
 
     return (
-      state.density > this.capacity_density && !float_isclose(state.density, this.capacity_density)
+      state.density > this.capacityDensity && !floatIsClose(state.density, this.capacityDensity)
     );
   }
 }

@@ -7,7 +7,7 @@ import { ShockwaveDrawer } from "../shockwave_drawer";
  * @class TrafficAugmenter
  */
 abstract class TrafficAugmenter {
-    abstract init(_drawer: ShockwaveDrawer): void;
+  abstract init(drawer: ShockwaveDrawer): void;
 }
 
 /**
@@ -29,7 +29,7 @@ export abstract class CapacityBottleneck extends TrafficAugmenter {
      */
   constructor(bottleneck: number) {
     super();
-        
+
     this.bottleneck = bottleneck;
   }
 }

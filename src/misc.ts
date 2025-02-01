@@ -2,7 +2,7 @@ import { polygon_t } from "./types";
 
 const DEBUG = false;
 
-export function debug_log(...args: unknown[]) {
+export function debugLog(...args: unknown[]) {
   if (DEBUG) {
     console.log(...args);
   }

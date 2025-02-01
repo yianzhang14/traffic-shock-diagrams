@@ -1,7 +1,7 @@
 import { CapacityBottleneck } from "./augmenters/base_augmenter";
 import { FundamentalDiagram } from "./fundamental_diagram";
 import { ShockwaveDrawer } from "./shockwave_drawer";
-import { DEFAULT_FIGURERESULT, FigureResult, Viewport } from "./types";
+import { DefaultFigureResult, FigureResult, Viewport } from "./types";
 
 export * from "./types";
 export * from "./shockwave_drawer";
@@ -12,47 +12,47 @@ export * from "./augmenters/traffic_light";
 export * from "./augmenters/base_augmenter";
 
 interface FigureParams {
-    fund_dia: FundamentalDiagram,
-    simulation_time: number,
-    num_trajectories: number,
-    with_trajectories:boolean,
-    with_polygons: boolean,
-    viewport?: Viewport
+  fundDia: FundamentalDiagram,
+  simulationTime: number,
+  numTrajectories: number,
+  withTrajectories: boolean,
+  withPolygons: boolean,
+  viewport?: Viewport
 }
 
 interface FundamentalDiagramParams {
-    freeflow_speed: number,
-    jam_density: number,
-    traffic_wave_speed: number,
-    init_density: number
+  freeflowSpeed: number,
+  jamDensity: number,
+  trafficWaveSpeed: number,
+  initDensity: number
 }
 
-export function createFundamentalDiagram({ 
-  freeflow_speed, 
-  jam_density, 
-  traffic_wave_speed, 
-  init_density 
+export function createFundamentalDiagram({
+  freeflowSpeed,
+  jamDensity,
+  trafficWaveSpeed,
+  initDensity
 }: FundamentalDiagramParams): FundamentalDiagram {
-  return new FundamentalDiagram(freeflow_speed, jam_density, traffic_wave_speed, init_density);
+  return new FundamentalDiagram(freeflowSpeed, jamDensity, trafficWaveSpeed, initDensity);
 }
 
 export function createFigureFactory({
-  fund_dia, simulation_time, num_trajectories, with_trajectories, with_polygons, viewport
+  fundDia, simulationTime, numTrajectories, withTrajectories, withPolygons, viewport
 }: FigureParams): [
-  (_augments: CapacityBottleneck[]) => FigureResult,
-  (_params: FundamentalDiagramParams) => void
-] {
-  let prev = DEFAULT_FIGURERESULT;
+    (augments: CapacityBottleneck[]) => FigureResult,
+    (params: FundamentalDiagramParams) => void
+  ] {
+  let prev = DefaultFigureResult;
 
   let sd = new ShockwaveDrawer(
-    fund_dia
+    fundDia
   );
 
   return [
     (augments: CapacityBottleneck[]): FigureResult => {
       try {
-        sd.run(simulation_time, augments);
-        const fig = sd.generateFigure(num_trajectories, with_trajectories, with_polygons, viewport);
+        sd.run(simulationTime, augments);
+        const fig = sd.generateFigure(numTrajectories, withTrajectories, withPolygons, viewport);
         prev = fig;
       } catch (err) {
         console.error("error when creating figure: ", err);

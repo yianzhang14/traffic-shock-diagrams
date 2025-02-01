@@ -4,28 +4,28 @@ import polylabel from "polylabel";
 import { Dictionary, Set, PriorityQueue, DefaultDictionary } from "typescript-collections";
 
 import { CapacityBottleneck } from "./augmenters/base_augmenter";
-import { 
-  State, 
-  Event, 
-  DiagramInterface, 
-  dtPoint, 
-  IntersectionEvent, 
-  TruncationEvent, 
-  UserInterface, 
-  float_isclose, 
-  CapacityEvent, 
-  FixedTimeComparable, 
-  compareFixedTimeComparable, 
-  EventType, 
-  Trajectory, 
+import {
+  State,
+  Event,
+  DiagramInterface,
+  dtPoint,
+  IntersectionEvent,
+  TruncationEvent,
+  UserInterface,
+  floatIsClose,
+  CapacityEvent,
+  FixedTimeComparable,
+  compareFixedTimeComparable,
+  EventType,
+  Trajectory,
 } from "./drawer_utils";
 import { FundamentalDiagram } from "./fundamental_diagram";
-import { calculateArea, clip, debug_log } from "./misc";
+import { calculateArea, clip, debugLog } from "./misc";
 import { polygon_t, Viewport } from "./types";
 import { FigureResult, GraphInterface, GraphLine, GraphPolygon, GraphTrajectory, Pair } from "./types";
 
 const EPS = 1e-4;
-const PLOT_THRESHOLD_OFFSET = 1;
+const PlotThresholdOffset = 1;
 
 /**
  * This class encapsulates all the logic needed to create the shockwave diagram given a fundmental diagram settings object and a list of augments to consider.
@@ -35,36 +35,36 @@ const PLOT_THRESHOLD_OFFSET = 1;
  */
 export class ShockwaveDrawer {
   private diagram: FundamentalDiagram;
-  private default_state: State;
+  private defaultState: State;
   private augments: CapacityBottleneck[] = [];
 
   private events = new PriorityQueue<Event>(Event.compareTo);
   private interfaces: DiagramInterface[] = [];
-    
+
   private intersections = new Dictionary<dtPoint, IntersectionEvent>();
   private truncations = new Dictionary<dtPoint, TruncationEvent>();
 
-  private simulation_time: number | undefined;
+  private simulationTime: number | undefined;
 
 
   /**
-     * Creates an instance of ShockwaveDrawer.
-     * 
-     * @param {FundamentalDiagram} diagram fundamental diagram to act as the backbone "settings" for the drawer
-     * @param {CapacityBottleneck[]} augments list of augments to consider
-     * @memberof ShockwaveDrawer
-     */
+ * Creates an instance of ShockwaveDrawer.
+ * 
+ * @param {FundamentalDiagram} diagram fundamental diagram to act as the backbone "settings" for the drawer
+ * @param {CapacityBottleneck[]} augments list of augments to consider
+ * @memberof ShockwaveDrawer
+ */
   constructor(diagram: FundamentalDiagram) {
     this.diagram = diagram;
-    this.default_state = this.diagram.getInitialState();
+    this.defaultState = this.diagram.getInitialState();
   }
 
   /**
-     * Sets up all the data structures needed to run through the shockwave drawer. If already run through once, this resets all data structures for a re-entrant rerun.
-     *
-     * @private
-     * @memberof ShockwaveDrawer
-     */
+ * Sets up all the data structures needed to run through the shockwave drawer. If already run through once, this resets all data structures for a re-entrant rerun.
+ *
+ * @private
+ * @memberof ShockwaveDrawer
+ */
   private setup(augments: CapacityBottleneck[]): void {
     this.augments = augments;
 
@@ -86,12 +86,12 @@ export class ShockwaveDrawer {
     }
   }
 
-  public addUserInterface(diagram_interface: UserInterface): void {
-    if (!diagram_interface.isUserGenerated()) {
+  public addUserInterface(diagramInterface: UserInterface): void {
+    if (!diagramInterface.isUserGenerated()) {
       throw new TypeError("Can only add user interfaces");
     }
 
-    this.addInterface(diagram_interface);
+    this.addInterface(diagramInterface);
   }
 
   public addCapacityEvent(event: CapacityEvent): void {
@@ -103,26 +103,26 @@ export class ShockwaveDrawer {
   }
 
   /**
-     * Adds an interface to the rolling list of interfaces. Handles intersections with other interfaces accordingly by creating new events/updating existing events.
-     *
-     * @private
-     * @param {DiagramInterface} diagram_interface interface to add
-     * @memberof ShockwaveDrawer
-     */
-  private addInterface(diagram_interface: DiagramInterface): void {
+ * Adds an interface to the rolling list of interfaces. Handles intersections with other interfaces accordingly by creating new events/updating existing events.
+ *
+ * @private
+ * @param {DiagramInterface} diagramInterface interface to add
+ * @memberof ShockwaveDrawer
+ */
+  private addInterface(diagramInterface: DiagramInterface): void {
     // iterate over the interfaces
     for (const x of this.interfaces) {
       // compute the intersection
       let intersect: dtPoint | undefined;
       try {
-        intersect = diagram_interface.intersection(x);
+        intersect = diagramInterface.intersection(x);
       } catch (err) {
         console.error(err);
         throw err;
       }
 
       // if no intersection or the intersection is trivial, skip
-      if (intersect === undefined || diagram_interface.hasEndpoint(intersect)) {
+      if (intersect === undefined || diagramInterface.hasEndpoint(intersect)) {
         continue;
       }
 
@@ -130,15 +130,15 @@ export class ShockwaveDrawer {
       if (x.isUserGenerated()) {
         // either update an existing truncation event or create a new one
         let event: TruncationEvent | undefined = this.truncations.getValue(intersect);
-                
+
         if (event === undefined) {
-          event = new TruncationEvent(intersect, x as UserInterface, [diagram_interface]);
+          event = new TruncationEvent(intersect, x as UserInterface, [diagramInterface]);
 
           this.truncations.setValue(intersect, event);
           this.events.add(event);
         } else {
-          if (!event.interfaces.includes(diagram_interface)) {
-            event.interfaces.push(diagram_interface);
+          if (!event.interfaces.includes(diagramInterface)) {
+            event.interfaces.push(diagramInterface);
           }
         }
         // otherwise, we have an intersection event
@@ -147,7 +147,7 @@ export class ShockwaveDrawer {
         let event: IntersectionEvent | undefined = this.intersections.getValue(intersect);
 
         if (event === undefined) {
-          event = new IntersectionEvent(intersect, [diagram_interface, x]);
+          event = new IntersectionEvent(intersect, [diagramInterface, x]);
 
           this.intersections.setValue(intersect, event);
           this.events.add(event);
@@ -155,55 +155,55 @@ export class ShockwaveDrawer {
           if (!event.interfaces.includes(x)) {
             event.interfaces.push(x);
           }
-          if (!event.interfaces.includes(diagram_interface)) {
-            event.interfaces.push(diagram_interface);
+          if (!event.interfaces.includes(diagramInterface)) {
+            event.interfaces.push(diagramInterface);
           }
         }
       }
     }
 
-    this.interfaces.push(diagram_interface);
+    this.interfaces.push(diagramInterface);
   }
 
   /**
-     * Helper function for determining the downstream/upstream (by position) state of a given point. Resolves these states by considering interfaces. Finds either the closest downstream/upstream interface, or returns the default state if there is none.
-     *
-     * @private
-     * @param {dtPoint} point point to resolve state for
-     * @param {boolean} [below=true] whether or not to get the upstream state
-     * @return {State} resultant state
-     * @memberof ShockwaveDrawer
-     */
+ * Helper function for determining the downstream/upstream (by position) state of a given point. Resolves these states by considering interfaces. Finds either the closest downstream/upstream interface, or returns the default state if there is none.
+ *
+ * @private
+ * @param {dtPoint} point point to resolve state for
+ * @param {boolean} [below=true] whether or not to get the upstream state
+ * @return {State} resultant state
+ * @memberof ShockwaveDrawer
+ */
   private resolveState(point: dtPoint, below = true): State {
     const scale = below ? 1 : -1;
     let res: DiagramInterface | undefined;
-    let min_dist = Infinity;
+    let minDist = Infinity;
 
-    for (const diagram_interface of this.interfaces) {
-      if (diagram_interface.above === undefined) {
-        console.assert(diagram_interface.isUserGenerated(), "have non-user-generated interface with an undefined above/below state");
+    for (const diagramInterface of this.interfaces) {
+      if (diagramInterface.above === undefined) {
+        console.assert(diagramInterface.isUserGenerated(), "have non-user-generated interface with an undefined above/below state");
         continue;
       }
 
-      const cur: number | undefined = diagram_interface.getPosAtTime(point.time + EPS);
+      const cur: number | undefined = diagramInterface.getPosAtTime(point.time + EPS);
 
-      if (cur === undefined || float_isclose(point.position, cur)) {
+      if (cur === undefined || floatIsClose(point.position, cur)) {
         continue;
       }
 
-      if (res !== undefined && float_isclose(scale * (point.position - cur), min_dist)) {
+      if (res !== undefined && floatIsClose(scale * (point.position - cur), minDist)) {
         if (
-          (below && diagram_interface.slope > res.slope) 
-          || (!below && diagram_interface.slope < res.slope)
+          (below && diagramInterface.slope > res.slope)
+          || (!below && diagramInterface.slope < res.slope)
         ) {
-          res = diagram_interface;
-        } 
+          res = diagramInterface;
+        }
       } else if (
-        (scale * (point.position - cur) >= 0 
-        && (scale * (point.position - cur) < min_dist))
+        (scale * (point.position - cur) >= 0
+          && (scale * (point.position - cur) < minDist))
       ) {
-        res = diagram_interface;
-        min_dist = scale * (point.position - cur);
+        res = diagramInterface;
+        minDist = scale * (point.position - cur);
       }
     }
 
@@ -215,23 +215,23 @@ export class ShockwaveDrawer {
       return res.below!;
     }
 
-    return this.default_state;
+    return this.defaultState;
   }
 
   /**
-     * Returns all unique states found throughout the shockwave drawer. 
-     *
-     * @private
-     * @return {State[]} list of unique states
-     * @memberof ShockwaveDrawer
-     */
+ * Returns all unique states found throughout the shockwave drawer. 
+ *
+ * @private
+ * @return {State[]} list of unique states
+ * @memberof ShockwaveDrawer
+ */
   private getStates(): State[] {
     const states = new Set<State>();
 
-    for (const diagram_interface of this.interfaces) {
-      if (diagram_interface.hasValidStates()) {
-        states.add(diagram_interface.above!);
-        states.add(diagram_interface.below!);
+    for (const diagramInterface of this.interfaces) {
+      if (diagramInterface.hasValidStates()) {
+        states.add(diagramInterface.above!);
+        states.add(diagramInterface.below!);
       }
     }
 
@@ -241,16 +241,16 @@ export class ShockwaveDrawer {
   }
 
   /**
-     * Handles the processing of a capacity event, an event at which a change in capacity occurs in the time-space diagram. Determines behavior using the prior/posterior capacity defined by the event and the fundamental diagram.
-     *
-     * @private
-     * @param {CapacityEvent} cur event to handle
-     * @return {boolean} whether or not a new state was created
-     * @memberof ShockwaveDrawer
-     */
+ * Handles the processing of a capacity event, an event at which a change in capacity occurs in the time-space diagram. Determines behavior using the prior/posterior capacity defined by the event and the fundamental diagram.
+ *
+ * @private
+ * @param {CapacityEvent} cur event to handle
+ * @return {boolean} whether or not a new state was created
+ * @memberof ShockwaveDrawer
+ */
   private handleCapacityEvent(cur: CapacityEvent): boolean {
     // if event no longer needs to be handled, don't
-    if (cur.user_interface.getPosAtTime(cur.point.time) === undefined) {
+    if (cur.userInterface.getPosAtTime(cur.point.time) === undefined) {
       return false;
     }
 
@@ -258,31 +258,31 @@ export class ShockwaveDrawer {
     const above: State = this.resolveState(cur.point, false);
     const below: State = this.resolveState(cur.point, true);
 
-    const prior_capacity = cur.prior_capacity === -1 ? below.flow : cur.prior_capacity;
+    const priorCapacity = cur.priorCapacity === -1 ? below.flow : cur.priorCapacity;
 
     // this occurs if the first event of the capacity event (the drop) did not happen
-    if (prior_capacity !== below.flow) {
+    if (priorCapacity !== below.flow) {
       return false;
     }
 
-    let posterior_capacity = (
-      cur.posterior_capacity === -1 
-        ? this.diagram.getMaxState().flow 
-        : cur.posterior_capacity
+    let posteriorCapacity = (
+      cur.posteriorCapacity === -1
+        ? this.diagram.getMaxState().flow
+        : cur.posteriorCapacity
     );
-    const interface_slope = cur.user_interface.getSlope();
+    const interfaceSlope = cur.userInterface.getSlope();
 
     // posterior capacity is limited by incoming flow IF the state is queued
     if (!this.diagram.stateIsQueued(below)) {
-      posterior_capacity = Math.min(posterior_capacity, below.flow);
+      posteriorCapacity = Math.min(posteriorCapacity, below.flow);
     }
 
     // if we have an increase in capacity and there is not enough density (queueing) to take advantage of that, only add an interface if it is trivial
     if (
-      (posterior_capacity > prior_capacity || float_isclose(posterior_capacity, prior_capacity)) 
+      (posteriorCapacity > priorCapacity || floatIsClose(posteriorCapacity, priorCapacity))
       && (!this.diagram.stateIsQueued(below) || above.equalTo(below))
     ) {
-      if (!float_isclose(above.density, below.density)) {
+      if (!floatIsClose(above.density, below.density)) {
         this.addInterface(new DiagramInterface(
           cur.point,
           this.diagram.getInterfaceSlope(above.density, below.density),
@@ -295,107 +295,107 @@ export class ShockwaveDrawer {
       return false;
       // have a canonical capacity event with a meaningful change in capacity
     } else {
-      let state_created = false;
+      let stateCreated = false;
 
       // main interface of event; right side result of capacity change (according to fundamental diagram)
-      const main_interface_state: State = this.diagram.getStateByFlow(posterior_capacity, false);
+      const mainInterfaceState: State = this.diagram.getStateByFlow(posteriorCapacity, false);
 
       // if the interface state is nontrivial, process it
-      if (!main_interface_state.equalTo(below)) {
-        const main_interface = new DiagramInterface(
+      if (!mainInterfaceState.equalTo(below)) {
+        const mainInterface = new DiagramInterface(
           cur.point,
-          this.diagram.getInterfaceSlope(main_interface_state.density, below.density),
-          main_interface_state,
+          this.diagram.getInterfaceSlope(mainInterfaceState.density, below.density),
+          mainInterfaceState,
           below,
           cur.point
         );
 
-        this.addInterface(main_interface);
+        this.addInterface(mainInterface);
 
-        if (float_isclose(main_interface.slope, interface_slope)) {
+        if (floatIsClose(mainInterface.slope, interfaceSlope)) {
           throw new EvalError("An invalid interface was somehow created--duplicated the original interface");
         }
 
-        if (main_interface.above === undefined || main_interface.below === undefined) {
+        if (mainInterface.above === undefined || mainInterface.below === undefined) {
           throw new TypeError("Main interface should have a well-defined above/below interface");
         }
 
         // update states -- enforces that these set states are logically consistent (any time we set an interface, the result would be identical)
-        if (cur.user_interface.upper_bound.equalTo(cur.point)) {
-          if (main_interface.slope < interface_slope) {
-            cur.user_interface.setBelowState(main_interface.below);
-          } else if (main_interface.slope > interface_slope) {
-            cur.user_interface.setAboveState(main_interface.above);
+        if (cur.userInterface.upperBound.equalTo(cur.point)) {
+          if (mainInterface.slope < interfaceSlope) {
+            cur.userInterface.setBelowState(mainInterface.below);
+          } else if (mainInterface.slope > interfaceSlope) {
+            cur.userInterface.setAboveState(mainInterface.above);
           }
         } else {
-          if (main_interface.slope < interface_slope) {
-            cur.user_interface.setBelowState(main_interface.above);
-          } else if (main_interface.slope > interface_slope) {
-            cur.user_interface.setAboveState(main_interface.below);
+          if (mainInterface.slope < interfaceSlope) {
+            cur.userInterface.setBelowState(mainInterface.above);
+          } else if (mainInterface.slope > interfaceSlope) {
+            cur.userInterface.setAboveState(mainInterface.below);
           }
         }
 
-        state_created ||= true;
+        stateCreated ||= true;
       } else {
         // otherwise, there is no interface and simply pass through states
-        cur.user_interface.setBelowState(below);
+        cur.userInterface.setBelowState(below);
       }
 
       // byproduct state -- to conserve cars on the left side of the fundamental diagram
-      const byproduct_interface_state = this.diagram.getStateByFlow(posterior_capacity, true);
+      const byproductInterfaceState = this.diagram.getStateByFlow(posteriorCapacity, true);
 
       // same logic as with the main state
-      if (!byproduct_interface_state.equalTo(above)) {
-        const byproduct_interface = new DiagramInterface(
+      if (!byproductInterfaceState.equalTo(above)) {
+        const byproductInterface = new DiagramInterface(
           cur.point,
-          this.diagram.getInterfaceSlope(above.density, byproduct_interface_state.density),
+          this.diagram.getInterfaceSlope(above.density, byproductInterfaceState.density),
           above,
-          byproduct_interface_state,
+          byproductInterfaceState,
           cur.point
         );
 
-        this.addInterface(byproduct_interface);
+        this.addInterface(byproductInterface);
 
-        if (float_isclose(byproduct_interface.slope, interface_slope)) {
+        if (floatIsClose(byproductInterface.slope, interfaceSlope)) {
           throw new EvalError("An invalid interface was somehow created -- duplicated existing interface");
         }
 
-        if (byproduct_interface.above === undefined || byproduct_interface.below === undefined) {
+        if (byproductInterface.above === undefined || byproductInterface.below === undefined) {
           throw new TypeError("Byproduct interface above/below states should be well-defined");
         }
 
-        if (cur.user_interface.upper_bound.equalTo(cur.point)) {
-          if (byproduct_interface.slope < interface_slope) {
-            cur.user_interface.setBelowState(byproduct_interface.below);
-          } else if (byproduct_interface.slope > interface_slope) {
-            cur.user_interface.setAboveState(byproduct_interface.above);
+        if (cur.userInterface.upperBound.equalTo(cur.point)) {
+          if (byproductInterface.slope < interfaceSlope) {
+            cur.userInterface.setBelowState(byproductInterface.below);
+          } else if (byproductInterface.slope > interfaceSlope) {
+            cur.userInterface.setAboveState(byproductInterface.above);
           }
         } else {
-          if (byproduct_interface.slope < interface_slope) {
-            cur.user_interface.setBelowState(byproduct_interface.above);
-          } else if (byproduct_interface.slope > interface_slope) {
-            cur.user_interface.setAboveState(byproduct_interface.below);
+          if (byproductInterface.slope < interfaceSlope) {
+            cur.userInterface.setBelowState(byproductInterface.above);
+          } else if (byproductInterface.slope > interfaceSlope) {
+            cur.userInterface.setAboveState(byproductInterface.below);
           }
         }
 
-        state_created ||= true;
+        stateCreated ||= true;
       } else {
-        cur.user_interface.setAboveState(above);
+        cur.userInterface.setAboveState(above);
       }
 
-      return state_created;
+      return stateCreated;
     }
   }
 
   /**
-     * Handles an intersection event, in which any number of interfaces that are not user generated intersect, potentially creating a new outgoing interface while limiting the extents of the component interfaces.
-     *
-     * @private
-     * @param {IntersectionEvent} cur event to handle
-     * @param {boolean} [force=false] whether or not to force an intersection event (ignore checking for consistency)
-     * @return {boolean} whether or not a new interface was created
-     * @memberof ShockwaveDrawer
-     */
+ * Handles an intersection event, in which any number of interfaces that are not user generated intersect, potentially creating a new outgoing interface while limiting the extents of the component interfaces.
+ *
+ * @private
+ * @param {IntersectionEvent} cur event to handle
+ * @param {boolean} [force=false] whether or not to force an intersection event (ignore checking for consistency)
+ * @return {boolean} whether or not a new interface was created
+ * @memberof ShockwaveDrawer
+ */
   private handleIntersectionEvent(cur: IntersectionEvent, force = false): boolean {
     console.assert(cur.interfaces.length >= 2, "number of interfaces in an intersection event msut necessarily be greater than or equal to 2");
 
@@ -407,12 +407,12 @@ export class ShockwaveDrawer {
     // gather all valid interfaces at this point
     const interfaces: DiagramInterface[] = [];
 
-    for (const diagram_interface of cur.interfaces) {
-      if (diagram_interface.getPosAtTime(cur.point.time) === undefined) {
+    for (const diagramInterface of cur.interfaces) {
+      if (diagramInterface.getPosAtTime(cur.point.time) === undefined) {
         continue;
       }
 
-      interfaces.push(diagram_interface);
+      interfaces.push(diagramInterface);
     }
 
     // if there is only one valid interface, there is nothing to do
@@ -421,35 +421,35 @@ export class ShockwaveDrawer {
     }
 
     // determine among the interfaces the above and below state of the new offshooting interface using slope logic
-    let max_slope: number = -1 * Infinity;
+    let maxSlope: number = -1 * Infinity;
     let above: State | undefined;
-    let min_slope = Infinity;
+    let minSlope = Infinity;
     let below: State | undefined;
 
-    let no_new_interface = false;
+    let noNewInterface = false;
 
-    for (const diagram_interface of interfaces) {
-      console.assert(!diagram_interface.isUserGenerated(), "interface being processed in intersection event does not is user generated, which is invalid");
-            
-      if (diagram_interface.slope > max_slope) {
-        max_slope = diagram_interface.slope;
-        below = diagram_interface.below;
+    for (const diagramInterface of interfaces) {
+      console.assert(!diagramInterface.isUserGenerated(), "interface being processed in intersection event does not is user generated, which is invalid");
+
+      if (diagramInterface.slope > maxSlope) {
+        maxSlope = diagramInterface.slope;
+        below = diagramInterface.below;
       }
 
-      if (diagram_interface.slope < min_slope) {
-        min_slope = diagram_interface.slope;
-        above = diagram_interface.above;
+      if (diagramInterface.slope < minSlope) {
+        minSlope = diagramInterface.slope;
+        above = diagramInterface.above;
       }
 
       try {
-        diagram_interface.addCutoff(undefined, cur.point);
+        diagramInterface.addCutoff(undefined, cur.point);
       } catch (err) {
         console.error("Had error adding cutoff. May be intended.", err);
-        no_new_interface = true;
+        noNewInterface = true;
       }
     }
 
-    if (no_new_interface) {
+    if (noNewInterface) {
       return false;
     }
 
@@ -459,7 +459,7 @@ export class ShockwaveDrawer {
 
     // create a new interface if it would be non-trivial
     if (above !== below) {
-      const new_interface = new DiagramInterface(
+      const newInterface = new DiagramInterface(
         cur.point,
         this.diagram.getInterfaceSlope(above?.density, below.density),
         above,
@@ -467,7 +467,7 @@ export class ShockwaveDrawer {
         cur.point
       );
 
-      this.addInterface(new_interface);
+      this.addInterface(newInterface);
 
       return true;
     }
@@ -476,12 +476,12 @@ export class ShockwaveDrawer {
   }
 
   /**
-     * Handles a truncation event, in which any number of non-user-generated interfaces intersect with a single user-generated interface. Either handles it by converting the event to a new capacity event by fiat or by creating a new intersectionevent organically.
-     *
-     * @private
-     * @param {TruncationEvent} cur
-     * @memberof ShockwaveDrawer
-     */
+ * Handles a truncation event, in which any number of non-user-generated interfaces intersect with a single user-generated interface. Either handles it by converting the event to a new capacity event by fiat or by creating a new intersectionevent organically.
+ *
+ * @private
+ * @param {TruncationEvent} cur
+ * @memberof ShockwaveDrawer
+ */
   private handleTruncationEvent(cur: TruncationEvent): void {
     // check for whether or not a truncation event is recorded for this point
     if (!this.truncations.remove(cur.point)) {
@@ -489,7 +489,7 @@ export class ShockwaveDrawer {
     }
 
     // check if the user interface is still defined here
-    if (cur.user_interface.getPosAtTime(cur.point.time) === undefined) {
+    if (cur.userInterface.getPosAtTime(cur.point.time) === undefined) {
       // if it isn't, return early
       // don't need to convert to intersectionevent since one already exists since addInterface handles this already
       return;
@@ -498,82 +498,82 @@ export class ShockwaveDrawer {
     // gather all valid interfaces that are defined at the event's point & cutoff the component interfaces
     const interfaces: DiagramInterface[] = [];
 
-    for (const diagram_interface of cur.interfaces) {
-      if (diagram_interface.getPosAtTime(cur.point.time) === undefined) {
+    for (const diagramInterface of cur.interfaces) {
+      if (diagramInterface.getPosAtTime(cur.point.time) === undefined) {
         continue;
       }
 
-      interfaces.push(diagram_interface);
+      interfaces.push(diagramInterface);
     }
 
     if (interfaces.length === 0) {
       return;
     }
 
-    for (const diagram_interface of interfaces) {
-      if (diagram_interface.equivalentTo(cur.user_interface)) {
+    for (const diagramInterface of interfaces) {
+      if (diagramInterface.equivalentTo(cur.userInterface)) {
         continue;
       }
 
-      diagram_interface.addCutoff(undefined, cur.point);
+      diagramInterface.addCutoff(undefined, cur.point);
     }
 
     // if the user interface has not already been processed (it doesn't have valid states), create a new capacity event for when it "starts"
-    if (!cur.user_interface.hasValidStates()) {
-      debug_log("converting to capacity event");
+    if (!cur.userInterface.hasValidStates()) {
+      debugLog("converting to capacity event");
 
-      cur.user_interface.addCutoff(cur.point);
+      cur.userInterface.addCutoff(cur.point);
 
       this.handleCapacityEvent(
         new CapacityEvent(
           cur.point,
-          cur.user_interface,
+          cur.userInterface,
           -1,
-          cur.user_interface.augment.bottleneck
+          cur.userInterface.augment.bottleneck
         )
       );
       // otherwise, try to handle it as an intersection event
     } else {
-      debug_log("handling right truncation event");
+      debugLog("handling right truncation event");
 
       // create a new interface to represent that this user interface is being split into two "components"
       // the newly-created interface is the old one but with a right-side cutoff
       // the previously-existing interface is nulled out with a left-side cutoff
-      const new_interface: UserInterface = cur.user_interface.clone();
-      this.interfaces.push(new_interface);
-      cur.user_interface.addCutoff(cur.point);
-      cur.user_interface.above = cur.user_interface.below = undefined;
+      const newInterface: UserInterface = cur.userInterface.clone();
+      this.interfaces.push(newInterface);
+      cur.userInterface.addCutoff(cur.point);
+      cur.userInterface.above = cur.userInterface.below = undefined;
 
       // process resulting intersectionevent & cutoff user-interface if a new state is created in its place
-      const state_created = this.handleIntersectionEvent(
+      const stateCreated = this.handleIntersectionEvent(
         new IntersectionEvent(
-          cur.point, 
-          [new_interface as DiagramInterface].concat(cur.interfaces)), 
+          cur.point,
+          [newInterface as DiagramInterface].concat(cur.interfaces)),
         true
       );
 
-      if (state_created) {
-        for (const diagram_interface of interfaces) {
-          diagram_interface.addCutoff(undefined, cur.point);
+      if (stateCreated) {
+        for (const diagramInterface of interfaces) {
+          diagramInterface.addCutoff(undefined, cur.point);
         }
-        
-        cur.user_interface.addCutoff(undefined, cur.point);
+
+        cur.userInterface.addCutoff(undefined, cur.point);
       }
     }
   }
 
-  public run(simulation_time: number, augments: CapacityBottleneck[]): void {
+  public run(simulationTime: number, augments: CapacityBottleneck[]): void {
     this.setup(augments);
 
-    this.simulation_time = simulation_time;
+    this.simulationTime = simulationTime;
 
     while (this.events.size() !== 0) {
       const time: number = this.events.peek()!.point.time;
 
-      const pos_queue = new PriorityQueue<FixedTimeComparable>(compareFixedTimeComparable);
+      const posQueue = new PriorityQueue<FixedTimeComparable>(compareFixedTimeComparable);
 
-      while (this.events.size() !== 0 && float_isclose(this.events.peek()!.point.time, time)) {
-        const x: Event| undefined = this.events.dequeue();
+      while (this.events.size() !== 0 && floatIsClose(this.events.peek()!.point.time, time)) {
+        const x: Event | undefined = this.events.dequeue();
 
         if (x === undefined) {
           break;
@@ -581,50 +581,50 @@ export class ShockwaveDrawer {
 
         let priority = -1;
 
-        switch(x.type) {
-        case EventType.capacity: {
-          priority = 3;
-          break;
-        }
-        case EventType.intersection: {
-          priority = 1;
-          break;
-        }
-        case EventType.truncation: {
-          if ((x as TruncationEvent).user_interface.hasValidStates()) {
+        switch (x.type) {
+          case EventType.capacity: {
+            priority = 3;
+            break;
+          }
+          case EventType.intersection: {
             priority = 1;
-          } else {
-            priority = 2;
+            break;
+          }
+          case EventType.truncation: {
+            if ((x as TruncationEvent).userInterface.hasValidStates()) {
+              priority = 1;
+            } else {
+              priority = 2;
+            }
           }
         }
-        }
 
-        pos_queue.add({ "event": x, "priority": priority, "position": x.point.position });
+        posQueue.add({ "event": x, "priority": priority, "position": x.point.position });
       }
 
-      while (pos_queue.size() !== 0) {
-        const cur = pos_queue.dequeue()!;
+      while (posQueue.size() !== 0) {
+        const cur = posQueue.dequeue()!;
         const event = cur.event;
 
         if (event.disabled) {
           continue;
         }
 
-        debug_log("processing event", event.point, event.type);
+        debugLog("processing event", event.point, event.type);
 
         switch (event.type) {
-        case EventType.capacity: {
-          this.handleCapacityEvent(event as CapacityEvent);
-          break;
-        }
-        case EventType.intersection: {
-          this.handleIntersectionEvent(event as IntersectionEvent);
-          break;
-        }
-        case EventType.truncation: {
-          this.handleTruncationEvent(event as TruncationEvent);
-          break;
-        }
+          case EventType.capacity: {
+            this.handleCapacityEvent(event as CapacityEvent);
+            break;
+          }
+          case EventType.intersection: {
+            this.handleIntersectionEvent(event as IntersectionEvent);
+            break;
+          }
+          case EventType.truncation: {
+            this.handleTruncationEvent(event as TruncationEvent);
+            break;
+          }
         }
       }
     }
@@ -633,17 +633,17 @@ export class ShockwaveDrawer {
   private findClosestIntersectionPoint_trajectory(
     cur: Trajectory
   ): [dtPoint, DiagramInterface] | undefined {
-    let min_intersect_time = Infinity;
+    let minIntersectTime = Infinity;
     let result: [dtPoint, DiagramInterface] | undefined;
 
-    for (const diagram_interface of this.interfaces) {
-      if (!diagram_interface.hasValidStates()) {
+    for (const diagramInterface of this.interfaces) {
+      if (!diagramInterface.hasValidStates()) {
         continue;
       }
 
       let intersection: dtPoint | undefined;
       try {
-        intersection = diagram_interface.intersection(cur);
+        intersection = diagramInterface.intersection(cur);
       } catch (err) {
         continue;
       }
@@ -652,9 +652,9 @@ export class ShockwaveDrawer {
         continue;
       }
 
-      if (intersection.time < min_intersect_time) {
-        min_intersect_time = intersection.time;
-        result = [intersection, diagram_interface];
+      if (intersection.time < minIntersectTime) {
+        minIntersectTime = intersection.time;
+        result = [intersection, diagramInterface];
       }
     }
 
@@ -662,165 +662,163 @@ export class ShockwaveDrawer {
   }
 
   /**
-   * Generates a figure after the drawer has run, creating interfaces & states partitioning the timespace diagram.
-   * 
-   * Can generate with trajectories (and a number of trajectories), which scale according to the initial density. 
-   * Can also generate with polygon, which overlay the partitioned areas.
-   * 
-   * Can also specify the viewport---defined by max/min position and max/min time. If not specified, will scale according
-   * to the geometries generated (assuming only positive times).
-   * 
-   * @param num_trajectories 
-   * @param with_trajectories 
-   * @param with_polygons 
-   * @param set_max_pos 
-   * @param set_max_time 
-   * @param set_min_pos 
-   * @param set_min_time 
-   * @returns 
-   */
+* Generates a figure after the drawer has run, creating interfaces & states partitioning the timespace diagram.
+* 
+* Can generate with trajectories (and a number of trajectories), which scale according to the initial density. 
+* Can also generate with polygon, which overlay the partitioned areas.
+* 
+* Can also specify the viewport---defined by max/min position and max/min time. If not specified, will scale according
+* to the geometries generated (assuming only positive times).
+* 
+* @param numTrajectories 
+* @param withTrajectories 
+* @param withPolygons 
+* @param viewport 
+* @returns 
+*/
+
   public generateFigure(
-    num_trajectories: number, 
-    with_trajectories: boolean, 
-    with_polygons: boolean, 
+    numTrajectories: number,
+    withTrajectories: boolean,
+    withPolygons: boolean,
     viewport?: Viewport
   ): FigureResult {
-    const user_interfaces_out: GraphLine[] = [];
-    const interfaces_out: GraphInterface[] = [];
-    const trajectories_out: GraphTrajectory[] = [];
-    const polygons_out: GraphPolygon[] = [];
+    const userInterfacesOut: GraphLine[] = [];
+    const interfacesOut: GraphInterface[] = [];
+    const trajectoriesOut: GraphTrajectory[] = [];
+    const polygonsOut: GraphPolygon[] = [];
 
-    let max_pos = -1;
-    let max_time = -1;
-    let min_pos = Infinity;
-    // let min_time = Infinity;
+    let maxPos = -1;
+    let maxTime = -1;
+    let minPos = Infinity;
+    // let minTime = Infinity;
 
-    for (const diagram_interface of this.interfaces) {
-      const p1: dtPoint = diagram_interface.lower_bound;
+    for (const diagramInterface of this.interfaces) {
+      const p1: dtPoint = diagramInterface.lowerBound;
 
-      max_time = Math.max(max_time, p1.time);
+      maxTime = Math.max(maxTime, p1.time);
     }
 
-    max_time = Math.max(max_time, this.simulation_time!) + PLOT_THRESHOLD_OFFSET;
+    maxTime = Math.max(maxTime, this.simulationTime!) + PlotThresholdOffset;
 
     if (viewport !== undefined) {
-      max_time = Math.max(max_time, viewport.max_time);
-      max_pos = Math.max(max_pos, viewport.max_pos);
+      maxTime = Math.max(maxTime, viewport.maxTime);
+      maxPos = Math.max(maxPos, viewport.maxPos);
     }
 
-    for (const diagram_interface of this.interfaces) {
-      if (diagram_interface.isUserGenerated()) {
-        user_interfaces_out.push({
-          point1: (diagram_interface as UserInterface).original_lower_bound,
-          point2: (diagram_interface as UserInterface).original_upper_bound
+    for (const diagramInterface of this.interfaces) {
+      if (diagramInterface.isUserGenerated()) {
+        userInterfacesOut.push({
+          point1: (diagramInterface as UserInterface).originalLowerBound,
+          point2: (diagramInterface as UserInterface).originalUpperBound
         });
       }
 
-      if (!diagram_interface.hasValidStates()) {
+      if (!diagramInterface.hasValidStates()) {
         continue;
       }
 
-      const p1 = diagram_interface.lower_bound;
-      let p2 = diagram_interface.upper_bound;
+      const p1 = diagramInterface.lowerBound;
+      let p2 = diagramInterface.upperBound;
 
-      min_pos = Math.min(min_pos, p1.position);
+      minPos = Math.min(minPos, p1.position);
 
       if (p2.time !== Infinity) {
-        min_pos = Math.min(min_pos, p1.position);
+        minPos = Math.min(minPos, p1.position);
       }
 
       if (p2.time === Infinity) {
-        const pos = diagram_interface.getPosAtTime(max_time);
+        const pos = diagramInterface.getPosAtTime(maxTime);
 
-        if (pos === undefined ) {
+        if (pos === undefined) {
           throw new TypeError("Diagram interface should be defined at max time");
         }
 
-        max_pos = Math.max(max_pos, pos);
-        p2 = new dtPoint(max_time, pos);
+        maxPos = Math.max(maxPos, pos);
+        p2 = new dtPoint(maxTime, pos);
       }
 
       if (!p1.equalTo(p2)) {
-        interfaces_out.push({
-          above: diagram_interface.above,
-          below: diagram_interface.below,
+        interfacesOut.push({
+          above: diagramInterface.above,
+          below: diagramInterface.below,
           point1: p1,
           point2: p2
         });
       }
     }
 
-    min_pos = Math.min(min_pos, -1 * PLOT_THRESHOLD_OFFSET);
+    minPos = Math.min(minPos, -1 * PlotThresholdOffset);
 
-    const default_viewport: Viewport = {
-      max_time: Math.max(max_time, viewport?.max_time ?? -1 * Infinity),
-      min_time: Math.min(-1 * PLOT_THRESHOLD_OFFSET, (viewport?.min_time ?? Infinity)),
-      max_pos: Math.max(max_pos, viewport?.max_pos ?? -1 * Infinity),
-      min_pos: Math.min(min_pos, (viewport?.min_pos ?? Infinity))
+    const defaultViewport: Viewport = {
+      maxTime: Math.max(maxTime, viewport?.maxTime ?? -1 * Infinity),
+      minTime: Math.min(-1 * PlotThresholdOffset, (viewport?.minTime ?? Infinity)),
+      maxPos: Math.max(maxPos, viewport?.maxPos ?? -1 * Infinity),
+      minPos: Math.min(minPos, (viewport?.minPos ?? Infinity))
     };
-    
+
     if (viewport === undefined) {
-      viewport = default_viewport;
+      viewport = defaultViewport;
     }
 
-    if (with_trajectories && this.diagram.init_density !== 0) {
-      const slope = this.default_state.getSlope();
+    if (withTrajectories && this.diagram.initDensity !== 0) {
+      const slope = this.defaultState.getSlope();
 
       const step = (
-        (viewport.max_pos + slope * viewport.max_time) / num_trajectories
+        (viewport.maxPos + slope * viewport.maxTime) / numTrajectories
       );
-      for (let pos = 
-        Math.floor(-1 * slope * viewport.max_time);
-        pos <= viewport.max_pos; 
-        pos += step / this.diagram.init_density
+      for (let pos =
+        Math.floor(-1 * slope * viewport.maxTime);
+        pos <= viewport.maxPos;
+        pos += step / this.diagram.initDensity
       ) {
-        const cur_trajectories: GraphLine[] = [];
+        const curTrajectories: GraphLine[] = [];
         try {
           let cur = new Trajectory(new dtPoint(0, pos), slope);
 
           while (true) {  // eslint-disable-line no-constant-condition
             const x = this.findClosestIntersectionPoint_trajectory(cur);
-            let next_trajectory: Trajectory | undefined;
+            let nextTrajectory: Trajectory | undefined;
 
             if (x !== undefined) {
               const intersection = x[0];
-              const intersecting_interface = x[1];
+              const intersectingInterface = x[1];
 
-              if (intersecting_interface.above === undefined) {
+              if (intersectingInterface.above === undefined) {
                 throw new TypeError("Intersecting interface above state should not be undefined");
               }
 
-              next_trajectory = new Trajectory(
-                intersection, intersecting_interface.above.getSlope(), intersection
+              nextTrajectory = new Trajectory(
+                intersection, intersectingInterface.above.getSlope(), intersection
               );
 
-              if (next_trajectory.slope === Infinity) {
+              if (nextTrajectory.slope === Infinity) {
                 break;
               }
 
               cur.addCutoff(undefined, intersection);
             }
 
-            const p1 = cur.lower_bound;
-            let p2 = cur.upper_bound;
+            const p1 = cur.lowerBound;
+            let p2 = cur.upperBound;
 
             if (p2.time === Infinity) {
-              const p2_pos = cur.getPosAtTime(max_time + PLOT_THRESHOLD_OFFSET);
+              const p2Pos = cur.getPosAtTime(maxTime + PlotThresholdOffset);
 
-              if (p2_pos === undefined) {
+              if (p2Pos === undefined) {
                 break;
               }
 
-              p2 = new dtPoint(max_time + PLOT_THRESHOLD_OFFSET, p2_pos,);
+              p2 = new dtPoint(maxTime + PlotThresholdOffset, p2Pos,);
             }
 
-            cur_trajectories.push({
+            curTrajectories.push({
               point1: p1,
               point2: p2
             });
 
-            if (next_trajectory !== undefined) {
-              cur = next_trajectory;
+            if (nextTrajectory !== undefined) {
+              cur = nextTrajectory;
             } else {
               break;
             }
@@ -829,85 +827,85 @@ export class ShockwaveDrawer {
           console.error(err);
         }
 
-        if (cur_trajectories.length >= 1) {
-          const cleaned_traj: GraphTrajectory = [
-            cur_trajectories[0].point1, cur_trajectories[0].point2
+        if (curTrajectories.length >= 1) {
+          const cleanedTraj: GraphTrajectory = [
+            curTrajectories[0].point1, curTrajectories[0].point2
           ];
 
-          for (let i = 1; i < cur_trajectories.length; i++) {
-            cleaned_traj.push(cur_trajectories[i].point2);
+          for (let i = 1; i < curTrajectories.length; i++) {
+            cleanedTraj.push(curTrajectories[i].point2);
           }
 
-          trajectories_out.push(cleaned_traj);
+          trajectoriesOut.push(cleanedTraj);
         }
       }
     }
 
-    if (with_polygons) {
+    if (withPolygons) {
       const polygons = this.resolvePolygons(
-        default_viewport, viewport
+        defaultViewport, viewport
       );
 
       for (const polygon of polygons) {
         const midpoint = polylabel(polygon.geometry.coordinates);
-        const midpoint_dt = new dtPoint(midpoint[0], midpoint[1]);
+        const midpointDt = new dtPoint(midpoint[0], midpoint[1]);
 
-        const below = this.resolveState(midpoint_dt, true);
+        const below = this.resolveState(midpointDt, true);
 
-        polygons_out.push({
+        polygonsOut.push({
           points: polygon.geometry.coordinates[0].map(([x, y]) => new dtPoint(x, y)),
           state: below,
-          point: midpoint_dt,
+          point: midpointDt,
         });
       }
     }
 
     return {
       viewport,
-      user_interfaces: user_interfaces_out,
-      interfaces: interfaces_out,
-      polygons: polygons_out,
-      trajectories: trajectories_out,
+      userInterfaces: userInterfacesOut,
+      interfaces: interfacesOut,
+      polygons: polygonsOut,
+      trajectories: trajectoriesOut,
       states: this.getStates()
     };
   }
 
   private resolvePolygons(
-    full_viewport: Viewport,
-    set_viewport?: Viewport
+    fullViewport: Viewport,
+    setViewport?: Viewport
   ): polygon_t[] {
     const graph = new DefaultDictionary<dtPoint, Set<dtPoint>>(
       () => { return new Set<dtPoint>(); }
     );
-    
-    const bottom_left = new dtPoint(full_viewport.min_time, full_viewport.min_pos);
-    const top_left = new dtPoint(full_viewport.min_time, full_viewport.max_pos);
-    const bottom_right = new dtPoint(full_viewport.max_time, full_viewport.min_pos);
-    const top_right = new dtPoint(full_viewport.max_time, full_viewport.max_pos);
+
+    const bottomLeft = new dtPoint(fullViewport.minTime, fullViewport.minPos);
+    const topLeft = new dtPoint(fullViewport.minTime, fullViewport.maxPos);
+    const bottomRight = new dtPoint(fullViewport.maxTime, fullViewport.minPos);
+    const topRight = new dtPoint(fullViewport.maxTime, fullViewport.maxPos);
 
     const segments: [number, dtPoint][] = [];
-    segments.push([full_viewport.min_pos, bottom_right]);
-    segments.push([full_viewport.max_pos, top_right]);
+    segments.push([fullViewport.minPos, bottomRight]);
+    segments.push([fullViewport.maxPos, topRight]);
 
-    for (const diagram_interface of this.interfaces) {
-      if (!diagram_interface.hasValidStates()) {
+    for (const diagramInterface of this.interfaces) {
+      if (!diagramInterface.hasValidStates()) {
         continue;
       }
 
-      const x = diagram_interface.lower_bound;
-      let y = diagram_interface.upper_bound;
+      const x = diagramInterface.lowerBound;
+      let y = diagramInterface.upperBound;
 
       if (y.time === Infinity) {
-        const y_pos = diagram_interface.getPosAtTime(full_viewport.max_time);
+        const yPos = diagramInterface.getPosAtTime(fullViewport.maxTime);
 
-        if (y_pos === undefined ){
+        if (yPos === undefined) {
           throw new TypeError("Polygon y pos should not be undefined");
         }
 
-        y = new dtPoint(full_viewport.max_time, y_pos);
+        y = new dtPoint(fullViewport.maxTime, yPos);
       }
 
-      if (!y.equalTo(top_right) && float_isclose(full_viewport.max_time, y.time)) {
+      if (!y.equalTo(topRight) && floatIsClose(fullViewport.maxTime, y.time)) {
         segments.push([y.position, y]);
       }
 
@@ -923,12 +921,12 @@ export class ShockwaveDrawer {
       }
     }
 
-    graph.getValue(bottom_left).add(top_left);
-    graph.getValue(bottom_left).add(bottom_right);
-    graph.getValue(top_left).add(top_right);
-    graph.getValue(top_left).add(bottom_left);
-    graph.getValue(bottom_right).add(bottom_left);
-    graph.getValue(top_right).add(top_left);
+    graph.getValue(bottomLeft).add(topLeft);
+    graph.getValue(bottomLeft).add(bottomRight);
+    graph.getValue(topLeft).add(topRight);
+    graph.getValue(topLeft).add(bottomLeft);
+    graph.getValue(bottomRight).add(bottomLeft);
+    graph.getValue(topRight).add(topLeft);
 
     segments.sort((a, b) => { return a[0] - b[0]; });
 
@@ -940,18 +938,18 @@ export class ShockwaveDrawer {
       graph.getValue(above).add(below);
     }
 
-    if (set_viewport === undefined) {
-      set_viewport = full_viewport;
+    if (setViewport === undefined) {
+      setViewport = fullViewport;
     }
 
     const polygons: polygon_t[] = [];
-    const full_polygon: polygon_t = turf.polygon(
+    const fullPolygon: polygon_t = turf.polygon(
       [[
-        [set_viewport.min_time, set_viewport.min_pos],
-        [set_viewport.min_time, set_viewport.max_pos],
-        [set_viewport.max_time, set_viewport.max_pos],
-        [set_viewport.max_time, set_viewport.min_pos],
-        [set_viewport.min_time, set_viewport.min_pos],
+        [setViewport.minTime, setViewport.minPos],
+        [setViewport.minTime, setViewport.maxPos],
+        [setViewport.maxTime, setViewport.maxPos],
+        [setViewport.maxTime, setViewport.minPos],
+        [setViewport.minTime, setViewport.minPos],
       ]]
     );
 
@@ -969,7 +967,7 @@ export class ShockwaveDrawer {
             break;
           }
         }
-        
+
         if (cur === null) {
           continue;
         }
@@ -981,40 +979,40 @@ export class ShockwaveDrawer {
           stack.push(cur);
           const n = stack.length;
 
-          const prev_vec = [cur.time - stack[n - 2].time, cur.position - stack[n - 2].position];
+          const prevVec = [cur.time - stack[n - 2].time, cur.position - stack[n - 2].position];
 
-          let max_angle = -1;
-          let next_point: dtPoint | null = null;
+          let maxAngle = -1;
+          let nextPoint: dtPoint | null = null;
 
           for (const neighbor of graph.getValue(cur).toArray()) {
             const vec = [cur.time - neighbor.time, cur.position - neighbor.position];
 
-            if (float_isclose(norm(prev_vec) as number, 0) 
-              || float_isclose(norm(vec) as number, 0)
+            if (floatIsClose(norm(prevVec) as number, 0)
+              || floatIsClose(norm(vec) as number, 0)
             ) {
               continue;
             }
 
-            const expr = dot(prev_vec, vec) / (norm(prev_vec) as number) / (norm(vec) as number);
+            const expr = dot(prevVec, vec) / (norm(prevVec) as number) / (norm(vec) as number);
             let angle = (acos(clip(expr, -1, 1)) as number) * 180 / pi;
 
-            const det_sign = sign(prev_vec[0] * vec[1] - prev_vec[1] * vec[0]);
+            const detSign = sign(prevVec[0] * vec[1] - prevVec[1] * vec[0]);
 
-            if (det_sign < 0) {
+            if (detSign < 0) {
               angle = 360 - angle;
             }
 
-            if (angle > max_angle) {
-              max_angle = angle;
-              next_point = neighbor;
+            if (angle > maxAngle) {
+              maxAngle = angle;
+              nextPoint = neighbor;
             }
           }
 
-          if (next_point === null || next_point.equalTo(point)) {
+          if (nextPoint === null || nextPoint.equalTo(point)) {
             break;
           }
 
-          cur = next_point;
+          cur = nextPoint;
 
           iterations++;
 
@@ -1028,7 +1026,7 @@ export class ShockwaveDrawer {
           break;
         }
 
-        for (let i = 0; i < stack.length - 1; i++) { 
+        for (let i = 0; i < stack.length - 1; i++) {
           seen.add(new Pair<dtPoint>(stack[i], stack[i + 1]));
         }
         seen.add(new Pair<dtPoint>(stack[stack.length - 1], stack[0]));
@@ -1048,7 +1046,7 @@ export class ShockwaveDrawer {
     const out: polygon_t[] = [];
 
     for (const polygon of polygons) {
-      const intersect = turf.intersect(turf.featureCollection([polygon, full_polygon]));
+      const intersect = turf.intersect(turf.featureCollection([polygon, fullPolygon]));
 
       if (intersect?.geometry === undefined) {
         continue;
@@ -1063,7 +1061,7 @@ export class ShockwaveDrawer {
 
     if (out.length > 1) {
       for (let i = 0; i < out.length; i++) {
-        if (float_isclose(calculateArea(out[i]), calculateArea(full_polygon))) {
+        if (floatIsClose(calculateArea(out[i]), calculateArea(fullPolygon))) {
           out.splice(i, 1);
           break;
         }
@@ -1074,7 +1072,7 @@ export class ShockwaveDrawer {
   }
 
   public getSimulationTime(): number {
-    return this.simulation_time ?? -1;
+    return this.simulationTime ?? -1;
   }
 
   public getInterfaces(): DiagramInterface[] {
