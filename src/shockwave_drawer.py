@@ -967,7 +967,7 @@ class ShockwaveDrawer:
 
                     trajectory.append(GraphLine(p1, p2, GREY))
 
-                    if next_trajectory is not None and next_poly_id is not None:
+                    if next_trajectory is not None and next_poly_id != -1:
                         cur_traj = next_trajectory
                         cur_poly_id = next_poly_id
                     else:

@@ -149,6 +149,7 @@ class SegmentArrangement:
 
             for i in range(len(polygon) - 1):
                 self.associate_segment_with_polygon((polygon[i], polygon[i + 1]), polygon_id)
+            self.associate_segment_with_polygon((polygon[-1], polygon[0]), polygon_id)
 
     def add_segment(self, p1: dtPoint, p2: dtPoint, interface: Optional[Interface] = None) -> None:
         angle = get_polar_angle(p1, p2)
@@ -183,6 +184,7 @@ class SegmentArrangement:
     def get_segment_geos(self, segment: ArrangementEdge) -> list[int]:
         lp, rp = order_segment(segment)
         if (lp, rp) not in self.segment_to_polygon:
+            print("no polygon for segment", lp, rp)
             return []
 
         return self.segment_to_polygon[lp, rp]
@@ -236,7 +238,7 @@ class SegmentArrangement:
         out: list[shp.Polygon] = []
         for polygon in polygons:
             # fig, ax = plt.subplots()
-            # plot_polygon(ax, polygons[i], facecolor="red", alpha=0.5)
+            # plot_polygon(ax, polygon, facecolor="red", alpha=0.5)
             # plot_polygon(ax, full_polygon, facecolor="lightblue", alpha=0.5)
 
             intersection = full_polygon.intersection(shp.make_valid(polygon))
