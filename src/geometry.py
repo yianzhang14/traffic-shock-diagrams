@@ -343,17 +343,22 @@ class SegmentTree:
         self.segments = segments
 
         self.root = self._build(0, len(self.endpoints) - 1, self.endpoints[0], self.endpoints[-1])
+        for i, segment in enumerate(self.segments):
+            self._insert_segment(i, segment[0].time, segment[1].time, self.root)
 
-    def _build(self, start: int, end: int, left: float, right: float) -> Optional[SegmentTreeNode]:
+    def _build(
+        self, start: int, end: int, left: float, right: float, segments: list[ArrangementEdge]
+    ) -> Optional[SegmentTreeNode]:
         mid = (start + end) // 2
-        if start <= end:
+        if start > end:
             return None
         if start == mid:
             return SegmentTreeNode(left, right, -1, leaf=True)
 
-        node = SegmentTreeNode(left, right, self.endpoints[mid])
-        node.left = self._build(start, mid - 1, start, self.endpoints[mid])
-        node.right = self._build(mid + 1, end, self.endpoints[mid], end)
+        divider = self.endpoints[mid]
+        node = SegmentTreeNode(left, right, divider)
+        node.left = self._build(start, mid - 1, start, divider)
+        node.right = self._build(mid + 1, end, divider, right)
 
         return node
 
@@ -362,9 +367,12 @@ class SegmentTree:
     ) -> None:
         if node is None:
             return
+
+        # segment is disjoint from the node
         if right < node.left_cutoff or left > node.right_cutoff:
             return
 
+        # store segment where it is long in the block, no need to further recurse
         if (left < node.left_cutoff or float_isclose(left, node.left_cutoff)) and (
             right > node.right_cutoff or float_isclose(right, node.right_cutoff)
         ):
@@ -374,22 +382,8 @@ class SegmentTree:
         self._insert_segment(index, left, node.divider, node.left)
         self._insert_segment(index, node.divider, right, node.right)
 
-    def find_segment(self, x, y, node=1, start=0, end=None):
-        if end is None:
-            end = self.n - 1
+    def find_segment(self, x, y):
+        return self._find(x, y, 0, len(self.segments) - 1, self.root)
 
-        if start == end:
-            # Find segment directly above point
-            result = None
-            min_y = float("inf")
-            for seg in self.tree[node]:
-                if seg[0] <= x <= seg[1] and seg[2] > y and seg[2] < min_y:
-                    min_y = seg[2]
-                    result = seg
-            return result
-
-        mid = (start + end) // 2
-        if x <= self.segments[mid][0]:
-            return self.find_segment(x, y, 2 * node, start, mid)
-        else:
-            return self.find_segment(x, y, 2 * node + 1, mid + 1, end)
+    def _find(self, x, y, start, end, node):
+        pass
